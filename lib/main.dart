@@ -1,8 +1,46 @@
-import 'package:flutter/material.dart';
+// import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:io';
 
-void main() {
-  runApp(const MyApp());
+// https://api.tablotv.com/assocserver/getipinfo/
+const webServer = 'api.tablotv.com';
+const webFolder = 'assocserver/getipinfo/';
+
+
+void main() async {
+  // runApp(const MyApp());
+  final tablos = await findTablos();
+  print(tablos.ipAddresses[0]);
+  exit(0);
 }
+
+Future<Tablos> findTablos() async {
+  final url = Uri.https(webServer, webFolder);
+  final response = await http.get(url);
+  return Tablos(response);
+}
+
+class Tablos{
+  final Map<String, dynamic> responseBody;
+  final List<String> ipAddresses;
+
+  Tablos._internal(this.responseBody, this.ipAddresses);
+
+  factory Tablos(http.Response response) {
+    var responseBody = json.decode(response.body);
+    final ipAddresses = <String>[];
+    for (final tablo in responseBody['cpes']) {
+      ipAddresses.add(tablo['private_ip']);
+    }
+    return Tablos._internal(responseBody, ipAddresses);
+  }
+
+
+
+}
+
+/*
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -123,3 +161,5 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+
+*/
