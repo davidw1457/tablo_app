@@ -11,29 +11,29 @@ const webFolder = 'assocserver/getipinfo/';
 void main() async {
   // runApp(const MyApp());
   final tablos = await findTablos();
-  print(tablos.ipAddresses[0]);
+  print(tablos[0].privateIP);
   exit(0);
 }
 
-Future<Tablos> findTablos() async {
+Future<List<Tablo>> findTablos() async {
   final url = Uri.https(webServer, webFolder);
   final response = await http.get(url);
-  return Tablos(response);
+  return Tablo.listTablos(response);
 }
 
-class Tablos{
-  final Map<String, dynamic> responseBody;
-  final List<String> ipAddresses;
+class Tablo{
+  final String serverid;
+  final String privateIP;
+  
+  Tablo._internal(this.serverid, this.privateIP);
 
-  Tablos._internal(this.responseBody, this.ipAddresses);
-
-  factory Tablos(http.Response response) {
-    var responseBody = json.decode(response.body);
-    final ipAddresses = <String>[];
+  static List<Tablo> listTablos(http.Response response) {
+    final responseBody = json.decode(response.body);
+    final tablos = <Tablo>[];
     for (final tablo in responseBody['cpes']) {
-      ipAddresses.add(tablo['private_ip']);
+      tablos.add(Tablo._internal(tablo['serverid'], tablo['private_ip']));
     }
-    return Tablos._internal(responseBody, ipAddresses);
+    return tablos;
   }
 }
 

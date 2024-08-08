@@ -1,16 +1,17 @@
 # tablo_app
 
-A new Flutter project.
+A Flutter app for connecting to and managing a Tablo DVR
 
-## Getting Started
+## TODO
+* Connect to DVR
+* Download list of recordings
+* Download scheduled recordings
+* Download conflicted recordings
+* Cache all of the above locally, update once/day (overnight?)
+* Configure options to automatically export shows to NAS
+* Auto delete exported shows
+* Auto unschedule exported shows
+* Maintain list of upcoming unscheduled shows to allow rescheduling
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## DONE
+* Find DVR on network
