@@ -35,9 +35,6 @@ class Tablos{
     }
     return Tablos._internal(responseBody, ipAddresses);
   }
-
-
-
 }
 
 /*
