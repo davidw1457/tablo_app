@@ -1,7 +1,9 @@
 // import 'package:flutter/material.dart';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
+// import 'dart:io';
 
 // https://api.tablotv.com/assocserver/getipinfo/
 const webServer = 'api.tablotv.com';
@@ -11,8 +13,6 @@ const port = '8885';
 void main() async {
   // runApp(const MyApp());
   final tablos = await findTablos();
-  final result = await tablos[0].pingServer();
-  print(result);
 }
 
 Future<List<Tablo>> findTablos() async {
@@ -37,10 +37,17 @@ class Tablo{
   }
 
   Future<bool> pingServer() async {
-    final url = Uri.http('$privateIP:$port', 'server/info');
-    final response = await http.get(url);
-    final responseBody = json.decode(response.body);
+    final responseBody = await _get('server/info');
     return responseBody['server_id'] == serverID;
+  }
+
+  Future<Map<String, dynamic>> _get(String path) async {
+    final url = Uri.http('$privateIP:$port', path);
+    final response = await http.get(url);
+    if (response.statusCode < 200 || response.statusCode > 299) {
+      throw HttpException('Unable to connect to $path: ${response.statusCode}');
+    }
+    return json.decode(response.body);
   }
 }
 
