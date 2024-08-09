@@ -3,7 +3,6 @@
 A Flutter app for connecting to and managing a Tablo DVR
 
 ## TODO
-* Connect to DVR
 * Download list of recordings
 * Download scheduled recordings
 * Download conflicted recordings
@@ -12,6 +11,8 @@ A Flutter app for connecting to and managing a Tablo DVR
 * Auto delete exported shows
 * Auto unschedule exported shows
 * Maintain list of upcoming unscheduled shows to allow rescheduling
+* Add functionality to find Tablo via UDP broadcast
 
 ## DONE
-* Find DVR on network
+* ~~Find DVR on network~~
+* ~~Connect to DVR~~

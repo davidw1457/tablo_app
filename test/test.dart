@@ -19,12 +19,20 @@ void main() async {
   test('Tablos have server IDs', () async {
     final tablos = Tablo.listTablos(response);
     for (final tablo in tablos) {
-      expect(tablo.serverid, isNotNull);
+      expect(tablo.serverID, isNotNull);
     }
   });
 
   test('findTablos() returns Tablo list', () async {
-    var tablos = await findTablos();
+    final tablos = await findTablos();
     expect(tablos, isA<List<Tablo>>());
+  });
+
+  test('pingServer() returns true if server is accessible', () async {
+    final tablos = await findTablos();
+    for (final tablo in tablos) {
+      final accessible = await tablo.pingServer();
+      expect(accessible, isTrue);
+    }
   });
 }

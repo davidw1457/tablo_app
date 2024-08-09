@@ -6,13 +6,13 @@ import 'dart:io';
 // https://api.tablotv.com/assocserver/getipinfo/
 const webServer = 'api.tablotv.com';
 const webFolder = 'assocserver/getipinfo/';
-
+const port = '8885';
 
 void main() async {
   // runApp(const MyApp());
   final tablos = await findTablos();
-  print(tablos[0].privateIP);
-  exit(0);
+  final result = await tablos[0].pingServer();
+  print(result);
 }
 
 Future<List<Tablo>> findTablos() async {
@@ -22,10 +22,10 @@ Future<List<Tablo>> findTablos() async {
 }
 
 class Tablo{
-  final String serverid;
+  final String serverID;
   final String privateIP;
   
-  Tablo._internal(this.serverid, this.privateIP);
+  Tablo._internal(this.serverID, this.privateIP);
 
   static List<Tablo> listTablos(http.Response response) {
     final responseBody = json.decode(response.body);
@@ -34,6 +34,13 @@ class Tablo{
       tablos.add(Tablo._internal(tablo['serverid'], tablo['private_ip']));
     }
     return tablos;
+  }
+
+  Future<bool> pingServer() async {
+    final url = Uri.http('$privateIP:$port', 'server/info');
+    final response = await http.get(url);
+    final responseBody = json.decode(response.body);
+    return responseBody['server_id'] == serverID;
   }
 }
 
