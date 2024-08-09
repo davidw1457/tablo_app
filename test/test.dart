@@ -9,30 +9,35 @@ void main() async {
     expect(Tablo.listTablos(response), isA<List<Tablo>>());
   });
 
+  test('findTablos() returns Tablo list', () async {
+    final tablos = await findTablos();
+    expect(tablos, isA<List<Tablo>>());
+  });
+
+  final tablos = Tablo.listTablos(response);
+
   test('Tablos have IP addresses', () async {
-    final tablos = Tablo.listTablos(response);
     for (final tablo in tablos) {
       expect(tablo.privateIP, isNotNull);
     }
   });
 
   test('Tablos have server IDs', () async {
-    final tablos = Tablo.listTablos(response);
     for (final tablo in tablos) {
       expect(tablo.serverID, isNotNull);
     }
   });
 
-  test('findTablos() returns Tablo list', () async {
-    final tablos = await findTablos();
-    expect(tablos, isA<List<Tablo>>());
-  });
-
   test('pingServer() returns true if server is accessible', () async {
-    final tablos = await findTablos();
     for (final tablo in tablos) {
       final accessible = await tablo.pingServer();
       expect(accessible, isTrue);
     }
   });
+
+  test('getAllRecordings() returns a map of items', () async {
+    final tablo = tablos[0];
+    final recordings = await tablo.getAllRecordings();
+    expect(recordings, isA<Map<String, dynamic>>());
+  }, timeout: const Timeout.factor(4));
 }

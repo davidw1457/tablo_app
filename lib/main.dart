@@ -1,5 +1,6 @@
 // import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -9,10 +10,18 @@ import 'dart:convert';
 const webServer = 'api.tablotv.com';
 const webFolder = 'assocserver/getipinfo/';
 const port = '8885';
+const maxBatchSize = 50;
 
 void main() async {
   // runApp(const MyApp());
-  final tablos = await findTablos();
+  print('commented out');
+  // final tablos = await findTablos();
+  // final tablo = tablos[0];
+  // final stopwatch = Stopwatch();
+  // stopwatch.start();
+  // final recordings = await tablo.getAllRecordings();
+  // stopwatch.stop();
+  // print('seconds: ${stopwatch.elapsedMilliseconds / 1000}');
 }
 
 Future<List<Tablo>> findTablos() async {
@@ -37,17 +46,59 @@ class Tablo{
   }
 
   Future<bool> pingServer() async {
-    final responseBody = await _get('server/info');
+    final responseBody = await _get('server/info') as Map<String, dynamic>;
     return responseBody['server_id'] == serverID;
   }
 
-  Future<Map<String, dynamic>> _get(String path) async {
+  Future<Map<String, dynamic>> getAllRecordings() async {
+    final recordings = await _get('recordings/airings') as List<dynamic>;
+    final responseBody = await _batch(recordings);
+    return responseBody;
+  }
+
+  Future<dynamic> _get(String path) async {
     final url = Uri.http('$privateIP:$port', path);
     final response = await http.get(url);
     if (response.statusCode < 200 || response.statusCode > 299) {
-      throw HttpException('Unable to connect to $path: ${response.statusCode}');
+      throw HttpException('Unable to connect to $path: ${response.statusCode} ${response.body}');
     }
     return json.decode(response.body);
+  }
+
+  Future<dynamic> _post(String path, String data) async {
+    final url = Uri.http('$privateIP:$port', path);
+    final response = await http.post(url, body: data);
+    return json.decode(response.body);
+  }
+
+  Future<dynamic> _batch(List<dynamic> list) async {
+    final data = _listStringMerge(list, maxBatchSize);
+    final responseBody = <String, dynamic>{};
+    for (final datum in data) {
+      final iterResponseBody = await _post('batch', datum);
+      responseBody.addAll(iterResponseBody);
+    }
+    return responseBody;
+  }
+
+  List<String> _listStringMerge(List<dynamic> list, int batchSize) {
+    final output = <String>[];
+    final buffer = StringBuffer('["${list[0]}"');
+    for (int i = 0; i < list.length; ++i) {
+      if (i % batchSize == 0) {
+        buffer.write(']');
+        output.add(buffer.toString());
+        buffer.clear();
+        buffer.write('["${list[i]}"');
+      } else {
+        buffer.write(',"${list[i]}"');
+      }
+    }
+    if (list.length % batchSize != 0) {
+      buffer.write(']');
+      output.add(buffer.toString());
+    }
+    return output;
   }
 }
 
