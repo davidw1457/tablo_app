@@ -1,0 +1,164 @@
+Source: https://github.com/jessedp/tablo-api-docs/blob/main/source/index.html.md
+
+This is a quick translation to keep track of known API calls so that I can 
+integrate them as desired without needing to constantly refer to jessedp's 
+documentation.
+
+Find Devices:
+https://api.tablotv.com/assocserver/getipinfo/
+
+returns private_ip. URL for all future requests is:
+http://private_ip:8885/{api_call}
+
+Additionally, the following URL gives RO access to hard drive
+http://private_ip:18080/pvr/
+
+GET
+account/subscription
+
+server/info
+    useful for validating server connection
+server/capabilities
+server/guide/status
+server/update/info
+server/harddrives
+    includes free space
+server/tuners
+
+storage/info
+
+settings/info
+
+settings/recording_qualities
+settings/recording_qualities/live
+settings/recording_qualities/recording
+settings/recording_qualities/{number}
+    {number} comes from previous 3 calls
+
+guide/airings?{cond}
+    state=[ conflicted | scheduled ]
+guide/shows?{cond}
+    state=[ conflicted | scheduled ]
+    qualifier=[ premiering | new | primetime ]
+guide/channels?{cond}
+    state=[ conflicted | scheduled ]
+guide/channels/{number}
+    {number} comes from previous call
+guide/movies?{cond}
+    state=[ conflicted | scheduled ]
+    channel={number}
+        {number} comes from guide/channels call
+    minrating=[ 2 | 4 | 6 | 8 | 10 ]
+    maxrating=[ 2 | 4 | 6 | 8 | 10 ]
+    unrated[ true | false ]
+guide/movies/{number}
+    {number} comes from previous call
+guide/series?{cond}
+    state=[ conflicted | scheduled ]
+    channel={number}
+        {number} comes from guide/channels call
+    qualifier=[ new | primetime | premiering ]
+guide/series/{number}
+    {number} comes from previous call
+guide/series/{number}/seasons
+    {number} comes from guide/series
+guide/series/seasons/{number}
+    {number} comes from previous call
+guide/series/{number}/episodes
+    {number} comes from guide/series
+guide/series/episodes/{number}
+    {number} comes from previous call
+guide/sports?{cond}
+    state=[ conflicted | scheduled ]
+    channel={number}
+        {number} comes from guide/channels call
+guide/sports/{number}
+    {number} comes from previous call
+guide/sports/events/{number}
+    {number} probably comes from guide/sports ??
+
+recordings/airings
+recordings/shows
+recordings/channels
+recordings/channels/{number}
+    {number} comes from previous call
+recordings/movies
+recordings/movies/{number}
+    {number} comes from previous call or recordings/shows
+recordings/series
+recordings/series/{number}
+    {number} comes from previous call or recordings/shows
+recordings/series/episodes/{number}
+    {number} comes from recordings/airings
+recordings/sports
+recordings/sports/{number}
+    {number} comes from previous call
+recordings/sports/events/{number}
+    {number} comes from recordings/airings
+
+PATCH
+guide/{type}/{number}
+    {type}=[ movies/airings | series/episodes | sports/events ]
+    {number} comes from guide/airings
+    Data:
+        "scheduled": [ true | false ]
+            set/unset recording
+guide/{type}/{number}
+    {type}=[ movies | series | sports ]
+    {number} comes from guide/shows
+    Data:
+        {"schedule": [ "all" | "new" | "none" ]}
+            set to record all/new/no airings of item
+        {
+            "schedule": {
+                "rule": [ "all" | "new" | "none" ]
+                "channel_path" [ null | "/guide/channels/{number}" ]
+                "offsets": {
+                    "start": [ 0 | -120 | -300 | -600 ]
+                    "end": [ 0 | 300 | 900 | 1800 | 3600 | 7200 | 10800 ]
+                    "source": [ "none" | "show" ]
+                }
+            },
+            "schedule_rule": [ "all" | "new" | "none" ],
+            "keep": {
+                "rule": [ "count" | "all" ]
+                "count": [ null | 1 | 3 | 5 | 10 | 20 ]
+            }
+        }
+            Defaults: {"schedule":{"channel_path":null,"offsets":{"source":"none"}}"keep":{"rule":"none","count":null}}
+            Need to confirm "schedule"."rule" and "schedule_rule" options/setability
+            Need to confirm "schedule"."offsets"."source" options
+            "schedule"."rule" & "schedule_rule" should correspond to "schedule" in first option
+            "schedule"."channel_path" limits recordings to specific channel only
+            "schedule"."offsets"."start" and ."end" offset the starting and ending time by the corresponding number of seconds
+            "schedule"."offsets"."source" ??? What is this?
+            "keep"."rule" whether to keep all or a specific number of episodes
+            "keep"."count" number of episodes to keep if rule = count
+recordings/{type}/{number}
+    {type}=[ series/episodes | sport/events | movies/airings ]
+    {number} comes from recordings/airings call
+    Data:
+        {
+            "watched": [ true | false ],
+            "protected": [ true | false ],
+            "position":  [ number ]
+            "schedule": [ rule? ]
+        }
+        watched toggles whether a recording is marked as watched
+        protected toggles whether a recording is protected from auto-deletion
+        position tracks where to resume an episode from
+        schedule is unclear
+
+DELETE
+recordings/{type}/{number}
+    {type}=[ series/episodes | sport/events | movies/airings ]
+    {number} comes from recordings/airings call
+
+POST
+batch
+    Data:
+        list of paths to retrieve data from (e.g. /recordings/series/episodes/2267413)
+recordings/{type}/{number}/watch
+    {type}=[ series/episodes | sport/events | movies/airings ]
+    {number} comes from recordings/airings call
+    Includes "playlist_url" which can be used to view/transcode (ffmpeg -i playlist_url outputfile.mp4)

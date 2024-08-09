@@ -16,3 +16,6 @@ A Flutter app for connecting to and managing a Tablo DVR
 ## DONE
 * ~~Find DVR on network~~
 * ~~Connect to DVR~~
+
+## Thanks
+* Thanks to jessedp for documenting the [Tablo API][https://github.com/jessedp/tablo-api-docs/blob/main/source/index.html.md]!
