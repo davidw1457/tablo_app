@@ -19,8 +19,10 @@ void main() async {
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
   // stopwatch.start();
-  // final recordings = await tablo.getAllRecordings();
+  // final fullGuide = await tablo.getFullGuide();
   // stopwatch.stop();
+  // print(fullGuide);
+  // print('type: ${fullGuide.runtimeType}');
   // print('seconds: ${stopwatch.elapsedMilliseconds / 1000}');
 }
 
@@ -56,6 +58,20 @@ class Tablo{
     return responseBody;
   }
 
+  Future<Map<String, dynamic>> getScheduled() async {
+    final scheduled = await _get('guide/airings?state=scheduled') as List<dynamic>;
+    final conflicted = await _get('guide/airings?state=conflicted') as List<dynamic>;
+    scheduled.addAll(conflicted);
+    final responseBody = await _batch(scheduled);
+    return responseBody;
+  }
+
+  Future<Map<String, dynamic>> getFullGuide() async {
+    final fullGuide = await _get('guide/airings') as List<dynamic>;
+    final responseBody = await _batch(fullGuide);
+    return responseBody;
+  }
+
   Future<dynamic> _get(String path) async {
     final url = Uri.http('$privateIP:$port', path);
     final response = await http.get(url);
@@ -84,7 +100,7 @@ class Tablo{
   List<String> _listStringMerge(List<dynamic> list, int batchSize) {
     final output = <String>[];
     final buffer = StringBuffer('["${list[0]}"');
-    for (int i = 0; i < list.length; ++i) {
+    for (int i = 1; i < list.length; ++i) {
       if (i % batchSize == 0) {
         buffer.write(']');
         output.add(buffer.toString());
@@ -94,10 +110,8 @@ class Tablo{
         buffer.write(',"${list[i]}"');
       }
     }
-    if (list.length % batchSize != 0) {
-      buffer.write(']');
-      output.add(buffer.toString());
-    }
+    buffer.write(']');
+    output.add(buffer.toString());
     return output;
   }
 }
