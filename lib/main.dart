@@ -2,8 +2,10 @@
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:sqlite3/sqlite3.dart';
 import 'dart:convert';
-// import 'dart:io';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+
 
 // https://api.tablotv.com/assocserver/getipinfo/
 const webServer = 'api.tablotv.com';
@@ -13,8 +15,8 @@ const maxBatchSize = 50;
 
 void main() async {
   // runApp(const MyApp());
+  final tablos = await findTablos();
   print('commented out');
-  // final tablos = await findTablos();
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
   // stopwatch.start();
@@ -34,14 +36,15 @@ Future<List<Tablo>> findTablos() async {
 class Tablo{
   final String serverID;
   final String privateIP;
+  final TabloDatabase db;
   
-  Tablo._internal(this.serverID, this.privateIP);
+  Tablo._internalConstructor(this.serverID, this.privateIP, this.db);
 
   static List<Tablo> listTablos(http.Response response) {
     final responseBody = json.decode(response.body);
     final tablos = <Tablo>[];
     for (final tablo in responseBody['cpes']) {
-      tablos.add(Tablo._internal(tablo['serverid'], tablo['private_ip']));
+      tablos.add(Tablo._internalConstructor(tablo['serverid'], tablo['private_ip'], TabloDatabase.getDatabase(tablo['serverid'])));
     }
     return tablos;
   }
@@ -112,6 +115,50 @@ class Tablo{
     buffer.write(']');
     output.add(buffer.toString());
     return output;
+  }
+}
+
+class TabloDatabase{
+  final Database db;
+  static const dbVer = 1;
+
+  TabloDatabase._internalConstructor(this.db) {
+    try {
+      var result = db.select('select * from system');
+      var dbVer = result.first['dbVer'];
+      if (dbVer == null || dbVer != TabloDatabase.dbVer) {
+        _init();
+      } else { print('version matched');}
+    } on SqliteException {
+      _init();
+    }
+  }
+
+  static TabloDatabase getDatabase(String serverID) {
+    Directory('databases').createSync();
+    final database = sqlite3.open('databases/$serverID');
+    return TabloDatabase._internalConstructor(database);
+  }
+
+  _init() {
+    db.execute('''
+      CREATE TABLE system (
+        serverID TEXT NOT NULL PRIMARY KEY,
+        name TEXT NOT NULL,
+        privateIP TEXT NOT NULL,
+        dbVer INT NOT NULL,
+        lastUpdated INT NOT NULL,
+        lastSaved INT NOT NULL
+      );
+    ''');
+    db.execute('''
+      INSERT INTO system (
+        serverID, name, privateIP, dbVer, lastUpdated, lastSaved
+      )
+      VALUES (
+        'unknown', 'unknown', '0.0.0.0', ${TabloDatabase.dbVer}, 0, 0
+      );
+    ''');
   }
 }
 
