@@ -15,7 +15,7 @@ const maxBatchSize = 50;
 
 void main() async {
   // runApp(const MyApp());
-  final tablos = await findTablos();
+  // final tablos = await findTablos();
   print('commented out');
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
@@ -44,7 +44,11 @@ class Tablo{
     final responseBody = json.decode(response.body);
     final tablos = <Tablo>[];
     for (final tablo in responseBody['cpes']) {
-      tablos.add(Tablo._internalConstructor(tablo['serverid'], tablo['private_ip'], TabloDatabase.getDatabase(tablo['serverid'])));
+      tablos.add(Tablo._internalConstructor(
+        tablo['serverid'],
+        tablo['private_ip'],
+        TabloDatabase.getDatabase(tablo['serverid'], tablo['name'], tablo['private_ip'])
+      ));
     }
     return tablos;
   }
@@ -122,25 +126,42 @@ class TabloDatabase{
   final Database db;
   static const dbVer = 1;
 
-  TabloDatabase._internalConstructor(this.db) {
+  TabloDatabase._internalConstructor(this.db, Map<String, String> sysinfo) {
     try {
-      var result = db.select('select * from system');
-      var dbVer = result.first['dbVer'];
+      final result = db.select('select * from system');
+      final dbVer = result.first['dbVer'];
       if (dbVer == null || dbVer != TabloDatabase.dbVer) {
-        _init();
+        _init(sysinfo);
       } else { print('version matched');}
     } on SqliteException {
-      _init();
+      _init(sysinfo);
     }
   }
 
-  static TabloDatabase getDatabase(String serverID) {
+  static TabloDatabase getDatabase(String serverID, String name, String privateIP) {
     Directory('databases').createSync();
-    final database = sqlite3.open('databases/$serverID');
-    return TabloDatabase._internalConstructor(database);
+    final databaseLocal = sqlite3.open('databases/$serverID.cache');
+    final databaseMemory = sqlite3.openInMemory();
+    databaseLocal.backup(databaseMemory);
+    return TabloDatabase._internalConstructor(
+      databaseMemory,
+      {
+        'serverID': serverID,
+        'name': name,
+        'privateIP': privateIP
+      });
   }
 
-  _init() {
+  _init(Map<String, String> sysinfo) {
+    final newDB = sqlite3.openInMemory();
+    newDB.backup(db);
+    newDB.dispose();
+
+    _createSystemTable(sysinfo);
+    _createGuideTables();
+  }
+
+  _createSystemTable(Map<String, String> sysinfo) {
     db.execute('''
       CREATE TABLE system (
         serverID TEXT NOT NULL PRIMARY KEY,
@@ -153,10 +174,50 @@ class TabloDatabase{
     ''');
     db.execute('''
       INSERT INTO system (
-        serverID, name, privateIP, dbVer, lastUpdated, lastSaved
+        serverID,
+        name,
+        privateIP,
+        dbVer,
+        lastUpdated,
+        lastSaved
       )
       VALUES (
-        'unknown', 'unknown', '0.0.0.0', ${TabloDatabase.dbVer}, 0, 0
+        '${sysinfo['serverID']}',
+        '${sysinfo['name']}',
+        '${sysinfo['privateIP']}',
+        ${TabloDatabase.dbVer},
+        0,
+        0
+      );
+    ''');
+  }
+
+  _createGuideTables() {
+    db.execute('''
+      CREATE TABLE guide (
+        airingID INT NOT NULL PRIMARY KEY,
+        itemID INT,
+        airingDateTime INT,
+        duration INT,
+        channelID INT,
+        state TEXT
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE episode (
+        episodeID TEXT PRIMARY KEY,
+        seriesID INT,
+        title TEXT,
+        description TEXT,
+        episode INT,
+        season INT,
+        origAirDate INT
+      );
+    ''');
+    // RESUME FROM HERE
+    db.execute('''
+      CREATE TABLE series (
+        seriesID INT PRIMARY KEY
       );
     ''');
   }
