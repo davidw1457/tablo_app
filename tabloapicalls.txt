@@ -75,7 +75,7 @@ guide/sports?{cond}
 guide/sports/{number}
     {number} comes from previous call
 guide/sports/events/{number}
-    {number} probably comes from guide/sports ??
+    {number} comes from guide/airings
 
 recordings/airings
 recordings/shows
@@ -162,3 +162,387 @@ recordings/{type}/{number}/watch
     {type}=[ series/episodes | sport/events | movies/airings ]
     {number} comes from recordings/airings call
     Includes "playlist_url" which can be used to view/transcode (ffmpeg -i playlist_url outputfile.mp4)
+
+Interesting Tablo Responses (omitting uninteresting fields):
+server/info
+    {
+        "server_id": String     (system.serverID),
+        "name": String          (system.name),
+        "local_address": String (system.privateIP)
+    }
+server/harddrives
+    [{
+        "name": String,
+        "size": Integer (bytes),
+        "size_mib": Integer,
+        "free": Integer (bytes),
+        "free_mib": Integer
+    }]
+
+guide/airings
+    [
+        String  (path to show/movie/sport airing)
+            "/guide/series/episodes/9999999"
+            "/guide/movies/airings/9999999"
+            "/guide/sports/events/9999999"
+    ]
+guide/series/episodes/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "series_path": String ("/guide/series/8888888" where 8888888 is seriesID)
+        "episode": {
+            "title": String,
+            "descriptions": String,
+            "number": Integer,
+            "season_number": Integer,
+            "orig_air_date": String ("yyyy-mm-dd")
+        },
+        "airing_details": {
+            "datetime": String ("yyyy-mm-ddThh:mmZ"),
+            "duration": Integer (seconds),
+            "channel_path": String ("/guide/channels/7777777" where 7777777 is channelID)
+            "channel": {
+                "object_id": Integer,
+                "channel": {
+                    "call_sign": String,
+                    "major": Integer,
+                    "minor": Integer,
+                    "network": String
+                }
+            },
+            "show_title": String
+        },
+        "schedule": {
+            "state": String ("none", "scheduled", "conflicted")
+        }
+    }
+guide/movies/airings/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "movie_path": String ("/guide/movies/8888888" where 8888888 is movieID)
+        "airing_details": {
+            "datetime": String ("yyyy-mm-ddThh:mmZ"),
+            "duration": Integer (seconds),
+            "channel_path": String ("/guide/channels/7777777" where 7777777 is channelID)
+            "channel": {
+                "object_id": Integer,
+                "channel": {
+                    "call_sign": String,
+                    "major": Integer,
+                    "minor": Integer,
+                    "network": String
+                }
+            },
+            "show_title": String
+        }
+        "movie_airing": {
+            "release_year": Integer,
+            "film_rating": ???,
+            "quality_rating": ???
+        },
+        "schedule": {
+            "state": String ("none", "scheduled", "conflicted")
+        }
+    }
+guide/sports/events/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "sport_path": String ("/guide/sports/8888888" where 8888888 is the sportID)
+        "event": {
+            "title": String
+            "description": String
+            "season": String (e.g. "2023-2024")
+            "season_type": String
+            "venue": String
+            "teams": [
+                {
+                    "name": String,
+                    "team_id": Integer
+                }
+            ],
+            "home_team_id": Integer
+        },
+        "airing_details": {
+            "datetime": String ("yyyy-mm-ddThh:mmZ"),
+            "duration": Integer (seconds),
+            "channel_path": String ("/guide/channels/7777777" where 7777777 is channelID)
+            "channel": {
+                "object_id": Integer,
+                "channel": {
+                    "call_sign": String,
+                    "major": Integer,
+                    "minor": Integer,
+                    "network": String
+                }
+            },
+            "show_title": String
+        }, 
+        "schedule": {
+            "state": String ("none", "scheduled", "conflicted")
+        }
+    }
+guide/shows
+    [
+        String (path to overall show/movie/sport (one-to-many with airings))
+            "/guide/series/9999999"
+            "/guide/movies/9999999"
+            "/guide/sports/9999999"
+    ]
+guide/series/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "schedule": {
+            "rule": String (none/new/all?)
+            "channel_path": String (null/path to channel to limit recording)
+        },
+        "schedule_rule": String (non/new/all?)
+        "series": {
+            "title": String,
+            "genres": [
+                String
+            ],
+            "description": String
+            "origin_air_date": String (yyyy-mm-dd),
+            "episode_runtime": Integer (seconds),
+            "series_rating": String
+            "cast": [
+                String
+            ],
+            "awards": [
+                String
+            ]
+        }
+        "keep": {
+            "rule": String (none/all/count),
+            "count": Integer
+        }
+    }
+guide/movies/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "movie": {
+            "title": String,
+            "plot": String,
+            "original_runtime": Int (seconds),
+            "release_year": Int
+            "film_rating": String,
+            "quality_rating": Int,
+            "cast": [
+                String
+            ],
+            "directors": [
+                String
+            ],
+            "awards": [],
+            "genres": [
+                String
+            ]
+        }
+        "keep": {
+            "rule": (none/all/count),
+            "count": Integer
+        }
+    }
+guide/sports/9999999
+    {
+        "object_id": Integer (matches to 9999999),
+        "schedule": {
+            "rule": String (none/all/new),
+            "channel_path": String (limit to channel)
+        },
+        "schedule_rule": String (none/all/new),
+        "sport": {
+            "title": String,
+            "description": String,
+            "genres": [
+                String
+            ]
+        }
+        "keep": {
+            "rule": String (none/count),
+            "count": Integer
+        }
+    }
+guide/channels
+    [
+        String (path to channel)
+            "/guide/channels/9999999"
+    ]
+guide/channels/9999999 
+    {
+        "object_id": Integer (matches 9999999),
+        "channel": {
+            "call_sign": String,
+            "major": Integer,
+            "minor": Integer,
+            "network": String
+        }
+    }
+
+recordings/airings
+    [
+        String (path to recording)
+            "/recordings/series/episodes/9999999"
+            "/recordings/movies/airings/9999999"
+            "/recordings/sports/events/9999999"
+    ]
+recordings/series/episodes/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "series_path": String ("/recordings/series/8888888" where 8888888 is seriesID)
+        "airing_details": {
+            "datetime": String ("yyyy-mm-ddThh:mmZ"),
+            "duration": Integer (seconds),
+            "channel_path": String ("/guide/channels/7777777" where 7777777 is channelID)
+            "channel": {
+                "object_id": Integer,
+                "channel": {
+                    "call_sign": String,
+                    "major": Integer,
+                    "minor": Integer,
+                    "network": String
+                }
+            },
+            "show_title": String
+        },
+        "video_details": {
+            "state": String ("failed"/???),
+            "clean": Boolean,
+            "duration": Integer (seconds),
+            "comskip": {
+                "state": String,
+                "error": String
+            },
+            "error": {
+                "code": String,
+                "details": String,
+                "description": String
+            },
+            "warnings": [
+                String
+            ]
+        },
+        "episode": {
+            "title": String,
+            "descriptions": String,
+            "number": Integer,
+            "season_number": Integer,
+            "orig_air_date": String ("yyyy-mm-dd")
+        },
+        "schedule": {
+            "state": String ("none", "scheduled", "conflicted")
+        }
+    }
+recordings/movies/airings/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "movie_path": String ("/recordings/movies/8888888" where 8888888 is movieID)
+        "airing_details": {
+            "datetime": String ("yyyy-mm-ddThh:mmZ"),
+            "duration": Integer (seconds),
+            "channel_path": String ("/guide/channels/7777777" where 7777777 is channelID)
+            "channel": {
+                "object_id": Integer,
+                "channel": {
+                    "call_sign": String,
+                    "major": Integer,
+                    "minor": Integer,
+                    "network": String
+                }
+            },
+            "show_title": String
+        }
+        "movie_airing": {
+            "release_year": Integer,
+            "film_rating": String,
+            "quality_rating": Integer
+        },
+        "video_details": {
+            "state": String ("failed"/???),
+            "clean": Boolean,
+            "duration": Integer (seconds),
+            "comskip": {
+                "state": String,
+                "error": String
+            },
+            "error": {
+                "code": String,
+                "details": String,
+                "description": String
+            },
+            "warnings": [
+                String
+            ]
+        }
+    }
+recordings/sports/events/9999999
+    Unable to verify at this time. Assume it is the same as guide/sports/events/9999999 with addition of "video_details"
+recordings/shows
+    [
+        String (path to show details)
+            "recordings/series/9999999"
+            "recordings/movies/9999999"
+            "recordings/sports/9999999"
+    ]
+recordings/series/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "series": {
+            "title": String,
+            "genres": [
+                String
+            ],
+            "description": String
+            "origin_air_date": String (yyyy-mm-dd),
+            "episode_runtime": Integer (seconds),
+            "series_rating": String
+            "cast": [
+                String
+            ],
+            "awards": [
+                String
+            ]
+        },
+        "keep": {
+            "rule": String (none/all/count),
+            "count": Integer
+        }
+    }
+recordings/movies/9999999
+    {
+        "object_id": Integer (matches 9999999),
+        "movie": {
+            "title": String,
+            "plot": String,
+            "original_runtime": Int (seconds),
+            "release_year": Int
+            "film_rating": String,
+            "quality_rating": String?,
+            "cast": [
+                String
+            ]
+            "directores": [
+                String
+            ],
+            "awards": [],
+            "genres": [
+                String
+            ]
+        }
+        "keep": {
+            "rule": (none/all/count),
+            "count": Integer
+        }
+    }
+recordings/sports/9999999
+    Unable to verify at this time. Assume is the same as guide/sports/9999999
+recordings/channels
+    [
+        String (path to channel)
+            "/recordings/channels/9999999"
+    ]
+recordings/channels/9999999
+recordings/{type}/9999999/watch    (POST, no data, type comes from recordings/airings (e.g. series/episodes))
+    {
+        "playlist_url": String (used to rip/playback recording)
+    }
