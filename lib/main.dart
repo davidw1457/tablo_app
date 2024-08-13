@@ -15,7 +15,7 @@ const maxBatchSize = 50;
 
 void main() async {
   // runApp(const MyApp());
-  final tablos = await findTablos();
+  final tablos = await Tablo.getTablos();
   print('commented out');
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
@@ -27,12 +27,6 @@ void main() async {
   // print('seconds: ${stopwatch.elapsedMilliseconds / 1000}');
 }
 
-Future<List<Tablo>> findTablos() async {
-  final url = Uri.https(webServer, webFolder);
-  final response = await http.get(url);
-  return Tablo.listTablos(response);
-}
-
 class Tablo{
   final String serverID;
   final String privateIP;
@@ -40,7 +34,9 @@ class Tablo{
   
   Tablo._internalConstructor(this.serverID, this.privateIP, this.db);
 
-  static List<Tablo> listTablos(http.Response response) {
+  static Future<List<Tablo>> getTablos() async {
+    final url = Uri.https(webServer, webFolder);
+    final response = await http.get(url);
     final responseBody = json.decode(response.body);
     final tablos = <Tablo>[];
     for (final tablo in responseBody['cpes']) {
@@ -49,6 +45,8 @@ class Tablo{
         tablo['private_ip'],
         TabloDatabase.getDatabase(tablo['serverid'], tablo['name'], tablo['private_ip'])
       ));
+      final space = await tablos.last._getSpace();
+      tablos.last.db.updateSystemTable(tablo, space);
     }
     return tablos;
   }
@@ -120,21 +118,35 @@ class Tablo{
     output.add(buffer.toString());
     return output;
   }
+  
+  Future<Map<String, int>> _getSpace() async {
+    var size = 0;
+    var free = 0;
+    final response = await _get('server/harddrives');
+    for (final drive in response) {
+      size += drive['size'] as int;
+      free += drive['free'] as int;
+    }
+    return {
+      'size': size,
+      'free': free,
+    };
+  }
 }
 
 class TabloDatabase{
   final Database db;
-  static const dbVer = 2;
+  static const dbVer = 1;
 
-  TabloDatabase._internalConstructor(this.db, Map<String, String> sysinfo) {
+  TabloDatabase._internalConstructor(this.db, String serverID) {
     try {
       final result = db.select('select * from system');
       final dbVer = result.first['dbVer'];
       if (dbVer == null || dbVer != TabloDatabase.dbVer) {
-        _init(sysinfo);
-      } else { print('version matched');}
+        _init(serverID);
+      }
     } on SqliteException {
-      _init(sysinfo);
+      _init(serverID);
     }
   }
 
@@ -144,32 +156,25 @@ class TabloDatabase{
     final databaseMemory = sqlite3.openInMemory();
     databaseLocal.backup(databaseMemory);
     databaseLocal.dispose();
-    return TabloDatabase._internalConstructor(
-      databaseMemory,
-      {
-        'serverID': serverID,
-        'name': name,
-        'privateIP': privateIP
-      });
+    return TabloDatabase._internalConstructor(databaseMemory, serverID);
   }
 
-  _init(Map<String, String> sysinfo) {
+  _init(String serverID) {
     final newDB = sqlite3.openInMemory();
     newDB.backup(db);
     newDB.dispose();
 
-    _createSystemTable(sysinfo);
+    _createSystemTable();
     _createGuideTables();
     _createRecordingTables();
     _createErrorTable();
-    _createSettingsTable();
-    final writedb = sqlite3.open('databases/${sysinfo['serverID']}.cache');
+    _createSettingsTables();
+    final writedb = sqlite3.open('databases/$serverID.cache');
     db.backup(writedb);
     writedb.dispose();
-
   }
 
-  _createSystemTable(Map<String, String> sysinfo) {
+  _createSystemTable() {
     db.execute('''
       CREATE TABLE system (
         serverID TEXT NOT NULL PRIMARY KEY,
@@ -180,24 +185,6 @@ class TabloDatabase{
         lastSaved INT NOT NULL,
         size INT,
         free INT
-      );
-    ''');
-    db.execute('''
-      INSERT INTO system (
-        serverID,
-        name,
-        privateIP,
-        dbVer,
-        lastUpdated,
-        lastSaved
-      )
-      VALUES (
-        '${sysinfo['serverID']}',
-        '${sysinfo['name']}',
-        '${sysinfo['privateIP']}',
-        ${TabloDatabase.dbVer},
-        0,
-        0
       );
     ''');
   }
@@ -412,13 +399,53 @@ class TabloDatabase{
     ''');
   }
 
-  _createSettingsTable() {
+  _createSettingsTables() {
     // TODO: Figure out what goes here and what the defaults are.
     db.execute('''
       CREATE TABLE settings (
         settingID         INT NOT NULL PRIMARY KEY
       );
     ''');
+    db.execute('''
+      CREATE TABLE queue (
+        queueID           INT NOT NULL PRIMARY KEY
+      );
+    ''');
+  }
+  
+  updateSystemTable(Map<String, dynamic> sysInfo, Map<String, int> space) {
+    final result = db.select('select * from system');
+    if (result.isEmpty) {
+      db.execute('''
+        INSERT INTO system (
+          serverID,
+          name,
+          privateIP,
+          dbVer,
+          lastUpdated,
+          lastSaved,
+          size,
+          free
+        )
+        VALUES (
+          '${sysInfo['serverid']}',
+          '${sysInfo['name']}',
+          '${sysInfo['private_ip']}',
+          ${TabloDatabase.dbVer},
+          0,
+          0,
+          ${space['size']},
+          ${space['free']}
+        );
+      ''');
+    } else {
+      db.execute('''
+        UPDATE system
+        SET
+          size = ${space['size']},
+          free = ${space['free']};
+      ''');
+    }
   }
 }
 
