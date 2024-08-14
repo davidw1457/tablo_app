@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:tablo_app/main.dart';
+import 'package:tablo_app/tablo.dart';
 
 void main() async {
   final tablos = await Tablo.getTablos();
