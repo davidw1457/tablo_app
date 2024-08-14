@@ -3,17 +3,18 @@ import 'package:sqlite3/sqlite3.dart';
 
 class TabloDatabase{
   final Database db;
+  final String serverID;
   static const _dbVer = 1;
 
-  TabloDatabase._internalConstructor(this.db, String serverID) {
+  TabloDatabase._internalConstructor(this.db, this.serverID) {
     try {
       final result = db.select('select * from system');
-      final dbVer = result.first['dbVer'];
-      if (dbVer == null || dbVer != _dbVer) {
-        _init(serverID);
+      final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
+      if (result.isEmpty || dbVer != _dbVer) {
+        _init();
       }
     } on SqliteException {
-      _init(serverID);
+      _init();
     }
   }
 
@@ -26,7 +27,7 @@ class TabloDatabase{
     return TabloDatabase._internalConstructor(databaseMemory, serverID);
   }
 
-  _init(String serverID) {
+  _init() {
     final newDB = sqlite3.openInMemory();
     newDB.backup(db);
     newDB.dispose();
@@ -36,39 +37,46 @@ class TabloDatabase{
     _createRecordingTables();
     _createErrorTable();
     _createSettingsTables();
-    final writedb = sqlite3.open('databases/$serverID.cache');
-    db.backup(writedb);
-    writedb.dispose();
   }
 
   _createSystemTable() {
     db.execute('''
       CREATE TABLE system (
         serverID TEXT NOT NULL PRIMARY KEY,
-        name TEXT NOT NULL,
+        serverName TEXT NOT NULL,
         privateIP TEXT NOT NULL,
         dbVer INT NOT NULL,
         lastUpdated INT NOT NULL,
         lastSaved INT NOT NULL,
-        size INT,
-        free INT
+        totalSize INT,
+        freeSize INT
       );
     ''');
+    saveToDisk();
   }
 
   _createGuideTables() {
     db.execute('''
+      CREATE TABLE channelType (
+        channelTypeID INTEGER PRIMARY KEY,
+        channelType   TEXT UNIQUE NOT NULL
+      );
+    ''');
+    db.execute('''
       CREATE TABLE channel (
-        channelID     INT NOT NULL PRIMARY KEY,
-        callSign      TEXT,
+        channelID     INT NOT NULL,
+        channelTypeID INT NOT NULL,
+        callSign      TEXT NOT NULL,
         major         INT NOT NULL,
         minor         INT NOT NULL,
-        network       TEXT
+        network       TEXT,
+        PRIMARY KEY (channelID, channelTypeID),
+        FOREIGN KEY (channelTypeID) REFERENCES channelType(channelTypeID)
       );
     ''');
     db.execute('''
       CREATE TABLE show (
-        showID        INT NOT NULL PRIMARY KEY,
+        showID        INT PRIMARY KEY,
         rule          INT,
         channelID     INT,
         keep          INT,
@@ -209,6 +217,7 @@ class TabloDatabase{
         teamID        INT NOT NULL
       );
     ''');
+    saveToDisk();
   }
 
   _createRecordingTables() {
@@ -244,6 +253,7 @@ class TabloDatabase{
         comSkipState      TEXT
       );
     ''');
+    saveToDisk();
   }
 
   _createErrorTable() {
@@ -264,6 +274,7 @@ class TabloDatabase{
         errorDesc         TEXT
       );
     ''');
+    saveToDisk();
   }
 
   _createSettingsTables() {
@@ -278,40 +289,128 @@ class TabloDatabase{
         queueID           INT NOT NULL PRIMARY KEY
       );
     ''');
+    saveToDisk();
   }
   
-  updateSystemTable(Map<String, dynamic> sysInfo, Map<String, int> space) {
-    final result = db.select('select * from system');
-    if (result.isEmpty) {
+  updateSystemTable(Map<String, dynamic> sysInfo) {
+    sysInfo = _sanitizeMap(sysInfo);
+    db.execute('''
+      INSERT INTO system (
+        serverID,
+        serverName,
+        privateIP,
+        dbVer,
+        lastUpdated,
+        lastSaved,
+        totalSize,
+        freeSize
+      )
+      VALUES (
+        ${sysInfo['serverID']},
+        ${sysInfo['serverName']},
+        ${sysInfo['privateIP']},
+        $_dbVer,
+        0,
+        0,
+        ${sysInfo['totalSize']},
+        ${sysInfo['freeSize']}
+      ) ON CONFLICT DO UPDATE SET
+        serverName = ${sysInfo['serverName']},
+        privateIP = ${sysInfo['privateIP']},
+        totalSize = ${sysInfo['totalSize']},
+        freeSize = ${sysInfo['freeSize']};
+    ''');
+    saveToDisk();
+  }
+
+  updateChannels(List<Map<String, dynamic>> channels) {
+    final channelTypes = _getChannelTypes();
+    for (var channel in channels) {
+      if (channelTypes[channel['channelType']] == null) {
+        channelTypes[channel['channelType']] = _addChannelType(channel['channelType']);
+      }
+      final channelType = channelTypes[channel['channelType']];
+      channel = _sanitizeMap(channel);
       db.execute('''
-        INSERT INTO system (
-          serverID,
-          name,
-          privateIP,
-          dbVer,
-          lastUpdated,
-          lastSaved,
-          size,
-          free
+        INSERT INTO channel(
+          channelID,
+          channelTypeID,
+          callSign,
+          major,
+          minor,
+          network
         )
         VALUES (
-          '${sysInfo['serverid']}',
-          '${sysInfo['name']}',
-          '${sysInfo['private_ip']}',
-          $_dbVer,
-          0,
-          0,
-          ${space['size']},
-          ${space['free']}
-        );
-      ''');
-    } else {
-      db.execute('''
-        UPDATE system
-        SET
-          size = ${space['size']},
-          free = ${space['free']};
+          ${channel['channelID']},
+          $channelType,
+          ${channel['callSign']},
+          ${channel['major']},
+          ${channel['minor']},
+          ${channel['network']}
+        ) ON CONFLICT DO UPDATE SET
+          callSign = ${channel['callSign']},
+          major = ${channel['major']},
+          minor = ${channel['minor']},
+          network = ${channel['network']};
       ''');
     }
+    saveToDisk();
+  }
+  
+  Map<String, int> _getChannelTypes() {
+    final channelTypes = <String, int>{};
+    final channelTypeTable = db.select('SELECT * FROM channelType');
+    for (final type in channelTypeTable) {
+      channelTypes[type['channelType']] = type['channelTypeID'];
+    }
+    return channelTypes;
+  }
+  
+  int _addChannelType(String channelType) {
+    channelType = _sanitizeString(channelType);
+    db.execute('''
+      INSERT INTO channelType (channelType)
+      VALUES ($channelType);
+    ''');
+    final record = db.select("SELECT channelTypeID FROM channelType WHERE channelType = $channelType;");
+    saveToDisk();
+    return record.first['channelTypeID'];
+  }
+  
+  String _sanitizeString(String value) {
+    value = value.replaceAll("'", "''");
+    return value == 'null' ? value : "'$value'";
+  }
+  
+  Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
+    for (final key in map.keys) {
+      if (map[key] is String) {
+        map[key] = _sanitizeString(map[key]);
+      } else if (map[key] is Map<String, dynamic>) {
+        map[key] = _sanitizeMap(map[key]);
+      } else if (map[key] is List<dynamic>) {
+        map[key] = _sanitizeList(map[key]);
+      }
+    }
+    return map;
+  }
+  
+  List<dynamic> _sanitizeList(List<dynamic> list) {
+    for (var i = 0; i < list.length; ++i) {
+      if (list[i] is String) {
+        list[i] = _sanitizeString(list[i]);
+      } else if (list[i] is Map<String, dynamic>) {
+        list[i] = _sanitizeMap(list[i]);
+      } else if (list[i] is List<dynamic>) {
+        list[i] = _sanitizeList(list[i]);
+      }
+    }
+    return list;
+  }
+
+  saveToDisk() {
+    final writedb = sqlite3.open('databases/$serverID.cache');
+    db.backup(writedb);
+    writedb.dispose();
   }
 }

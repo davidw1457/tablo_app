@@ -16,6 +16,7 @@ class Tablo{
   Tablo._internalConstructor(this.serverID, this.privateIP, this.db);
 
   static Future<List<Tablo>> getTablos() async {
+    // add functionality to look in databases folder first    
     final url = Uri.https(_webServer, _webFolder);
     final response = await http.get(url);
     final responseBody = json.decode(response.body);
@@ -26,8 +27,9 @@ class Tablo{
         tablo['private_ip'],
         TabloDatabase.getDatabase(tablo['serverid'], tablo['name'], tablo['private_ip'])
       ));
-      final space = await tablos.last._getSpace();
-      tablos.last.db.updateSystemTable(tablo, space);
+      
+      await tablos.last.updateSystemTable();
+      await tablos.last.updateChannels();
     }
     return tablos;
   }
@@ -57,6 +59,48 @@ class Tablo{
     return responseBody;
   }
 
+  Future<void> updateSystemTable() async {
+    final fullInfo = <String, dynamic>{};
+    final systemInfo = await _get('server/info');
+    fullInfo.addAll({
+      'serverID': systemInfo['server_id'],
+      'serverName': systemInfo['name'],
+      'privateIP': systemInfo['local_address'],
+    });
+    final space = await _getSpace();
+    fullInfo.addAll(space);
+    db.updateSystemTable(fullInfo);
+  }
+
+  Future<void> updateChannels() async {
+    final channels = <Map<String, dynamic>>[];
+    final guideChannelsPaths = await _get('guide/channels');
+    final guideChannels = await _batch(guideChannelsPaths);
+    for (final channel in guideChannels.values) {
+      channels.add({
+        'channelID': channel['object_id'],
+        'channelType': 'guide',
+        'callSign': channel['channel']['call_sign'],
+        'major': channel['channel']['major'],
+        'minor': channel['channel']['minor'],
+        'network': channel['channel']['network'],
+      });
+    }
+    final recordingChannelsPaths = await _get('recordings/channels');
+    final recordingChannels = await _batch(recordingChannelsPaths);
+    for (final channel in recordingChannels.values) {
+      channels.add({
+        'channelID': channel['object_id'],
+        'channelType': 'recordings',
+        'callSign': channel['channel']['call_sign'],
+        'major': channel['channel']['major'],
+        'minor': channel['channel']['minor'],
+        'network': channel['channel']['network'],
+      });
+    }
+    db.updateChannels(channels);
+  }
+
   Future<dynamic> _get(String path) async {
     final url = Uri.http('$privateIP:$_port', path);
     final response = await http.get(url);
@@ -72,7 +116,7 @@ class Tablo{
     return json.decode(response.body);
   }
 
-  Future<dynamic> _batch(List<dynamic> list) async {
+  Future<Map<String, dynamic>> _batch(List<dynamic> list) async {
     final data = _listStringMerge(list, _maxBatchSize);
     final responseBody = <String, dynamic>{};
     for (final datum in data) {
@@ -101,16 +145,16 @@ class Tablo{
   }
   
   Future<Map<String, int>> _getSpace() async {
-    var size = 0;
-    var free = 0;
+    var totalSize = 0;
+    var freeSize = 0;
     final response = await _get('server/harddrives');
     for (final drive in response) {
-      size += drive['size'] as int;
-      free += drive['free'] as int;
+      totalSize += drive['size'] as int;
+      freeSize += drive['free'] as int;
     }
     return {
-      'size': size,
-      'free': free,
+      'totalSize': totalSize,
+      'freeSize': freeSize,
     };
   }
 }

@@ -2,9 +2,6 @@
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 import 'package:tablo_app/tablo.dart';
 
-
-
-
 void main() async {
   // runApp(const MyApp());
   final tablos = await Tablo.getTablos();
