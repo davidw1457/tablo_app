@@ -8,7 +8,7 @@ class TabloDatabase{
 
   TabloDatabase._internalConstructor(this.db, this.serverID) {
     try {
-      final result = db.select('select * from system');
+      final result = db.select('select * from systemInfo');
       final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
       if (result.isEmpty || dbVer != _dbVer) {
         _init();
@@ -32,16 +32,17 @@ class TabloDatabase{
     newDB.backup(db);
     newDB.dispose();
 
-    _createSystemTable();
+    _createSystemInfoTable();
     _createGuideTables();
     _createRecordingTables();
     _createErrorTable();
     _createSettingsTables();
   }
 
-  _createSystemTable() {
+  _createSystemInfoTable() {
+    db.execute('PRAGMA foreign_keys = ON;');
     db.execute('''
-      CREATE TABLE system (
+      CREATE TABLE systemInfo (
         serverID TEXT NOT NULL PRIMARY KEY,
         serverName TEXT NOT NULL,
         privateIP TEXT NOT NULL,
@@ -75,86 +76,116 @@ class TabloDatabase{
       );
     ''');
     db.execute('''
-      CREATE TABLE show (
-        showID        INT PRIMARY KEY,
-        rule          INT,
-        channelID     INT,
-        keep          INT,
-        count         INT,
-        typeID        INT,
-        title         TEXT,
-        description   TEXT,
-        releaseDate   INT,
-        origRunTime   INT,
-        rating        INT,
-        stars         INT
-      );
-    ''');
-    db.execute('''
       CREATE TABLE rule (
-        ruleID        INT NOT NULL PRIMARY KEY,
+        ruleID        INTEGER PRIMARY KEY,
         rule          TEXT NOT NULL
       );
     ''');
     db.execute('''
-      CREATE TABLE keep (
-        keepID        INT NOT NULL PRIMARY KEY,
-        keep          TEXT NOT NULL
+      CREATE TABLE keepRecording (
+        keepRecordingID INTEGER PRIMARY KEY,
+        keepRecording   TEXT NOT NULL
       );
     ''');
     db.execute('''
-      CREATE TABLE type (
-        typeID        INT NOT NULL PRIMARY KEY,
-        type          TEXT NOT NULL,
-        suffix        TEXT NOT NULL
-      );
-    ''');
-    db.execute('''
-      CREATE TABLE showGenre (
-        showID        INT NOT NULL,
-        genreID       INT NOT NULL
+      CREATE TABLE showType (
+        showTypeID    INTEGER PRIMARY KEY,
+        showType      TEXT NOT NULL,
+        suffix        TEXT
       );
     ''');
     db.execute('''
       CREATE TABLE genre (
-        genreID       INT NOT NULL PRIMARY KEY,
+        genreID       INTEGER PRIMARY KEY,
         genre         TEXT NOT NULL
       );
     ''');
     db.execute('''
       CREATE TABLE rating (
-        ratingID      INT NOT NULL PRIMARY KEY,
-        rating        TEXT
-      );
-    ''');
-    db.execute('''
-      CREATE TABLE showCast (
-        showID        INT NOT NULL PRIMARY KEY,
-        castID        INT NOT NULL
+        ratingID      INTEGER PRIMARY KEY,
+        rating        TEXT NOT NULL
       );
     ''');
     db.execute('''
       CREATE TABLE cast (
-        castID        INT NOT NULL,
-        cast          TEXT
+        castID        INTEGER PRIMARY KEY,
+        cast          TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE awardName (
+        awardNameID   INTEGER PRIMARY KEY,
+        awardName     TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE awardCategory (
+        awardCategoryID INTEGER PRIMARY KEY,
+        awardCategory   TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE show (
+        showID          INT NOT NULL PRIMARY KEY,
+        ruleID          INT,
+        channelID       INT,
+        channelTypeID   INT,
+        keepRecordingID INT NOT NULL,
+        count           INT,
+        showTypeID      INT NOT NULL,
+        title           TEXT NOT NULL,
+        descript        TEXT,
+        releaseDate     INT NOT NULL,
+        origRunTime     INT,
+        ratingID        INT,
+        stars           INT,
+        FOREIGN KEY (ruleID) REFERENCES rule(ruleID),
+        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        FOREIGN KEY (keepRecordingID) REFERENCES keepRecording(keepRecordingID),
+        FOREIGN KEY (showTypeID) REFERENCES showType(showTypeID),
+        FOREIGN KEY (ratingID) REFERENCES rating(ratingID)
       );
     ''');
     db.execute('''
       CREATE TABLE showAward (
-        showID        INT NOT NULL,
-        awardID       INT NOT NULL
+        showID          INT NOT NULL,
+        won             INT NOT NULL,
+        awardNameID     INT NOT NULL,
+        awardCategoryID INT NOT NULL,
+        year            INT NOT NULL,
+        castID          INT,
+        PRIMARY KEY (showID, awardNameID, awardCategoryID, year, castID),
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (awardNameID) REFERENCES awardName(awardNameID),
+        FOREIGN KEY (awardCategoryID) REFERENCES awardCategory(awardCategoryID),
+        FOREIGN KEY (castID) REFERENCES cast(castID)
       );
     ''');
     db.execute('''
-      CREATE TABLE award (
-        awardID       INT NOT NULL PRIMARY KEY,
-        award         TEXT
+      CREATE TABLE showGenre (
+        showID        INT NOT NULL,
+        genreID       INT NOT NULL,
+        PRIMARY KEY (showID, genreID),
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (genreID) REFERENCES genre(genreID)
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE showCast (
+        showID        INT NOT NULL,
+        castID        INT NOT NULL,
+        PRIMARY KEY (showID, castID),
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (castID) REFERENCES cast(castID)
       );
     ''');
     db.execute('''
       CREATE TABLE showDirector (
         showID        INT NOT NULL,
-        castID        INT NOT NULL
+        castID        INT NOT NULL,
+        PRIMARY KEY (showID, castID),
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (castID) REFERENCES cast(castID)
       );
     ''');
     db.execute('''
@@ -178,7 +209,7 @@ class TabloDatabase{
       CREATE TABLE episode (
         episodeID     INT NOT NULL PRIMARY KEY,
         title         TEXT,
-        description   TEXT,
+        descript      TEXT,
         episode       INT,
         season        INT,
         seasonTypeID  INT,
@@ -292,10 +323,10 @@ class TabloDatabase{
     saveToDisk();
   }
   
-  updateSystemTable(Map<String, dynamic> sysInfo) {
+  updateSystemInfoTable(Map<String, dynamic> sysInfo) {
     sysInfo = _sanitizeMap(sysInfo);
     db.execute('''
-      INSERT INTO system (
+      INSERT INTO systemInfo (
         serverID,
         serverName,
         privateIP,
@@ -324,13 +355,11 @@ class TabloDatabase{
   }
 
   updateChannels(List<Map<String, dynamic>> channels) {
-    final channelTypes = _getChannelTypes();
-    for (var channel in channels) {
-      if (channelTypes[channel['channelType']] == null) {
-        channelTypes[channel['channelType']] = _addChannelType(channel['channelType']);
-      }
-      final channelType = channelTypes[channel['channelType']];
-      channel = _sanitizeMap(channel);
+    Map<String, Map> lookup = {'channelType': _getLookup('channelType')};
+    lookup = _updateLookups(channels, lookup);
+    channels = _addLookupIDs(channels, lookup);
+    final channelsClean = _sanitizeList(channels);
+    for (final channel in channelsClean) {
       db.execute('''
         INSERT INTO channel(
           channelID,
@@ -342,7 +371,7 @@ class TabloDatabase{
         )
         VALUES (
           ${channel['channelID']},
-          $channelType,
+          ${channel['channelTypeID']},
           ${channel['callSign']},
           ${channel['major']},
           ${channel['minor']},
@@ -357,55 +386,148 @@ class TabloDatabase{
     saveToDisk();
   }
   
-  Map<String, int> _getChannelTypes() {
-    final channelTypes = <String, int>{};
-    final channelTypeTable = db.select('SELECT * FROM channelType');
-    for (final type in channelTypeTable) {
-      channelTypes[type['channelType']] = type['channelTypeID'];
+  updateGuideShows(List<Map<String, dynamic>> guideShows) {
+    var lookup = <String, Map>{};
+
+    lookup['rule'] = _getLookup('rule');
+    lookup['keepRecording'] = _getLookup('keepRecording');
+    lookup['showType'] = _getLookup('showType');
+    lookup['genre'] = _getLookup('genre');
+    lookup['rating'] = _getLookup('rating');
+    lookup['cast'] = _getLookup('cast');
+    lookup['awardName'] = _getLookup('awardName');
+    lookup['awardCategory'] = _getLookup('awardCategory');
+    lookup['channelType'] = _getLookup('channelType');
+
+    lookup = _updateLookups(guideShows, lookup);
+    guideShows = _addLookupIDs(guideShows, lookup, channelType: 'guide');
+    final guideShowsClean = _sanitizeList(guideShows);
+    for (final show in guideShowsClean) {
+      db.execute('''
+        INSERT INTO show (
+          showID,
+          ruleID,
+          channelID,
+          channelTypeID,
+          keepRecordingID,
+          count,
+          showTypeID,
+          title,
+          descript,
+          releaseDate,
+          origRunTime,
+          ratingID,
+          stars
+        )
+        VALUES (
+          ${show['showID']},
+          ${show['ruleID']},
+          ${show['channelID']},
+          ${show['channelTypeID']},
+          ${show['keepRecordingID']},
+          ${show['count']},
+          ${show['showTypeID']},
+          ${show['title']},
+          ${show['descript']},
+          ${_convertDateTimeToInt(show['releaseDate'], show['showType'], 'show')},
+          ${show['origRunTime']},
+          ${show['ratingID']},
+          ${show['stars']}
+        ) ON CONFLICT DO UPDATE SET
+          ruleID = ${show['ruleID']},
+          channelID = ${show['channelID']},
+          keepRecordingID = ${show['keepRecordingID']},
+          count = ${show['count']},
+          showTypeID = ${show['showTypeID']},
+          title = ${show['title']},
+          descript = ${show['descript']},
+          releaseDate = ${_convertDateTimeToInt(show['releaseDate'], show['showType'], 'show')},
+          origRunTime = ${show['origRunTime']},
+          ratingID = ${show['ratingID']},
+          stars = ${show['stars']};
+      ''');
+      if (show['cast'] != null && show['cast'].length > 0) {
+        for (final castID in show['castID']) {
+          db.execute('''
+            INSERT INTO showCast (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
+      if (show['genre'] != null && show['genre'].length > 0) {
+        for (final genreID in show['genreID']) {
+          db.execute('''
+            INSERT INTO showGenre (showID, genreID) VALUES (${show['showID']}, $genreID) ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
+      if (show['director'] != null && show['director'].length > 0) {
+        for (final castID in show['directorID']) {
+          db.execute('''
+            INSERT INTO showDirector (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
+      if (show['award'] != null && show['award'].length > 0) {
+        for (final award in show['award']) {
+          db.execute('''
+            INSERT INTO showAward (
+              showID,
+              won,
+              awardNameID,
+              awardCategoryID,
+              year,
+              castID
+            )
+            VALUES (
+              ${show['showID']},
+              ${award['won'] ? 1 : 0},
+              ${award['awardNameID']},
+              ${award['awardCategoryID']},
+              ${award['year']},
+              ${award['castID']}
+            ) ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
     }
-    return channelTypes;
-  }
-  
-  int _addChannelType(String channelType) {
-    channelType = _sanitizeString(channelType);
-    db.execute('''
-      INSERT INTO channelType (channelType)
-      VALUES ($channelType);
-    ''');
-    final record = db.select("SELECT channelTypeID FROM channelType WHERE channelType = $channelType;");
     saveToDisk();
-    return record.first['channelTypeID'];
   }
-  
+ 
   String _sanitizeString(String value) {
-    value = value.replaceAll("'", "''");
-    return value == 'null' ? value : "'$value'";
+    var cleanValue = value.replaceAll("'", "''");
+    return cleanValue == 'null' ? cleanValue : "'$cleanValue'";
   }
   
   Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
+    final cleanMap = <String, dynamic>{};
     for (final key in map.keys) {
       if (map[key] is String) {
-        map[key] = _sanitizeString(map[key]);
+        cleanMap[key] = _sanitizeString(map[key]);
       } else if (map[key] is Map<String, dynamic>) {
-        map[key] = _sanitizeMap(map[key]);
+        cleanMap[key] = _sanitizeMap(map[key]);
       } else if (map[key] is List<dynamic>) {
-        map[key] = _sanitizeList(map[key]);
+        cleanMap[key] = _sanitizeList(map[key]);
+      } else {
+        cleanMap[key] = map[key];
       }
     }
-    return map;
+    return cleanMap;
   }
   
   List<dynamic> _sanitizeList(List<dynamic> list) {
-    for (var i = 0; i < list.length; ++i) {
-      if (list[i] is String) {
-        list[i] = _sanitizeString(list[i]);
-      } else if (list[i] is Map<String, dynamic>) {
-        list[i] = _sanitizeMap(list[i]);
-      } else if (list[i] is List<dynamic>) {
-        list[i] = _sanitizeList(list[i]);
+    final cleanList = <dynamic>[];
+    for (final item in list) {
+      if (item is String) {
+        cleanList.add(_sanitizeString(item));
+      } else if (item is Map<String, dynamic>) {
+        cleanList.add(_sanitizeMap(item));
+      } else if (item is List<dynamic>) {
+        cleanList.add(_sanitizeList(item));
+      } else {
+        cleanList.add(item);
       }
     }
-    return list;
+    return cleanList;
   }
 
   saveToDisk() {
@@ -413,4 +535,116 @@ class TabloDatabase{
     db.backup(writedb);
     writedb.dispose();
   }
+  
+  Map<String, Map> _updateLookups(List<Map<String, dynamic>> items, Map<String, Map> lookup) {
+    final uniqueInput = <String, Set>{};
+    for (final table in lookup.keys) {
+      uniqueInput[table] = <String>{};
+    }
+    for (final item in items) {
+      for (final table in lookup.keys) {
+        if (item[table] is List) {
+          for (final subItem in item[table]) {
+            uniqueInput[table]!.add(subItem);
+          }
+          if (table == 'cast' && item['director'] != null) {
+            for (final subItem in item['director']) {
+              uniqueInput[table]!.add(subItem);
+            }
+          }
+        } else if (item[table] != null) {
+          uniqueInput[table]!.add(item[table]);
+        }
+      }
+      if (item['award'] != null && item['award'].length > 0) {
+        for (final subItem in item['award']) {
+          for (final table in lookup.keys) {
+            if (subItem[table] != null) {
+              uniqueInput[table]!.add(subItem[table]);
+            }
+          }
+        }
+      }
+    }
+    for (final table in lookup.keys) {
+      for (final item in uniqueInput[table]!) {
+        if (!lookup[table]!.containsValue(item)) {
+          final itemClean = _sanitizeString(item);
+          db.execute('''
+            INSERT INTO $table ($table)
+            VALUES ($itemClean);
+          ''');
+          final itemID = db.select('''
+            SELECT ${table}ID
+            FROM $table as lutable
+            WHERE lutable.$table = $itemClean;
+          ''');
+          lookup[table]![item] = itemID.first['${table}ID'];
+        }
+      }
+    }
+    saveToDisk();
+    return lookup;
+  }
+  
+  List<Map<String, dynamic>> _addLookupIDs(List<Map<String, dynamic>> items, Map<String, dynamic> lookup, {String? channelType}) {
+    for (var i = 0; i < items.length; ++i) {
+      if (items[i]['channelID'] != null && channelType != null) {
+        items[i]['channelType'] = channelType;
+      }
+      for (final table in lookup.keys) {
+        final lookupValue = items[i][table];
+        if (lookupValue is String) {
+          items[i]['${table}ID'] = (lookup[table] as Map)[lookupValue];
+        } else if (lookupValue is List) {
+          final lookupIDs = <int>[];
+          for (final val in lookupValue) {
+            lookupIDs.add(lookup[table][val]);
+          }
+          items[i]['${table}ID'] = lookupIDs;
+          if (table == 'cast' && items[i]['director'] != null) {
+            lookupIDs.clear();
+            for (final val in items[i]['director']) {
+              lookupIDs.add(lookup[table][val]);
+            }
+            items[i]['directorID'] = lookupIDs;
+          }
+        }
+      }
+      if (items[i]['award'] != null && items[i]['award'].length > 0) {
+        for (var j = 0; j < items[i]['award'].length; ++j) {
+          for (final table in lookup.keys) {
+            final lookupValue = items[i]['award'][j][table];
+            if (lookupValue != null) {
+              items[i]['award'][j]['${table}ID'] = (lookup[table] as Map)[lookupValue];
+            }
+          }
+        }
+      }
+    }
+    return items;
+  }
+
+  Map<String, int> _getLookup(String table) {
+    final lookupTableMap = <String, int>{};
+    final lookupTable = db.select('SELECT * FROM $table');
+    for (final lookupRow in lookupTable) {
+      lookupTableMap[lookupRow[table]] = lookupRow['${table}ID'];
+    }
+    return lookupTableMap;
+  }
+  
+  String _convertDateTimeToInt(dynamic date, String recordType, String table) {
+    var dateTime = DateTime.fromMicrosecondsSinceEpoch(0);
+    if (date is int) {
+      dateTime = DateTime(date);
+    } else {
+      if (recordType == 'show') {
+        dateTime = DateTime.parse(date);
+      }
+      // Add additional conditions for recordings & airings as needed
+    }
+    return (dateTime.millisecondsSinceEpoch ~/ 1000).toString();
+  }
+    
 }

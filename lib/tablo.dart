@@ -28,15 +28,16 @@ class Tablo{
         TabloDatabase.getDatabase(tablo['serverid'], tablo['name'], tablo['private_ip'])
       ));
       
-      await tablos.last.updateSystemTable();
+      await tablos.last.updateSystemInfoTable();
       await tablos.last.updateChannels();
+      await tablos.last.updateGuideShows();
     }
     return tablos;
   }
 
   Future<bool> pingServer() async {
     final responseBody = await _get('server/info') as Map<String, dynamic>;
-    return responseBody['server_id'] == serverID;
+    return utf8.decode(((responseBody['server_id']) as String).codeUnits) == serverID;
   }
 
   Future<Map<String, dynamic>> getAllRecordings() async {
@@ -59,7 +60,7 @@ class Tablo{
     return responseBody;
   }
 
-  Future<void> updateSystemTable() async {
+  Future<void> updateSystemInfoTable() async {
     final fullInfo = <String, dynamic>{};
     final systemInfo = await _get('server/info');
     fullInfo.addAll({
@@ -69,7 +70,7 @@ class Tablo{
     });
     final space = await _getSpace();
     fullInfo.addAll(space);
-    db.updateSystemTable(fullInfo);
+    db.updateSystemInfoTable(fullInfo);
   }
 
   Future<void> updateChannels() async {
@@ -101,19 +102,39 @@ class Tablo{
     db.updateChannels(channels);
   }
 
+  Future<void> updateGuideShows() async {
+    final guideShowsList = await _get('guide/shows');
+    final guideShowsDesc = await _batch(guideShowsList);
+    final guideShows = <Map<String, dynamic>>[];
+    for (final show in guideShowsDesc.values) {
+      guideShows.add({
+        'showID': show['object_id'],
+        'rule': show['schedule']?['rule'],
+        'channelID': _getID(show['schedule']?['channel_path']),
+        'keepRecording': show['keep']['rule'],
+        'count': show['keep']['count'],
+        'showType' : _getShowType(show['path'])
+      });
+      guideShows.last.addAll(_getShowProperties(show));
+    }
+    db.updateGuideShows(guideShows);
+  }
+
   Future<dynamic> _get(String path) async {
     final url = Uri.http('$privateIP:$_port', path);
     final response = await http.get(url);
     if (response.statusCode < 200 || response.statusCode > 299) {
       throw HttpException('Unable to connect to $path: ${response.statusCode} ${response.body}');
     }
-    return json.decode(response.body);
+    final body = utf8.decode(response.body.codeUnits);
+    return json.decode(body);
   }
 
   Future<dynamic> _post(String path, String data) async {
     final url = Uri.http('$privateIP:$_port', path);
     final response = await http.post(url, body: data);
-    return json.decode(response.body);
+    final body = utf8.decode(response.body.codeUnits);
+    return json.decode(body);
   }
 
   Future<Map<String, dynamic>> _batch(List<dynamic> list) async {
@@ -156,5 +177,43 @@ class Tablo{
       'totalSize': totalSize,
       'freeSize': freeSize,
     };
+  }
+  
+  String? _getID(String? path) {
+    return path == null ? path : path.split('/').last;
+  }
+
+  String _getShowType(String path) {
+    return path.split("/")[1];
+  }
+  
+  Map<String, dynamic> _getShowProperties(Map<String, dynamic>record) {
+    final show = record['series'] ?? record['movie'] ?? record['sport'];
+    final awards = <Map<String, dynamic>>[];
+    if (show['awards'] != null && show['awards'].length > 0) {
+      for (final award in show['awards']) {
+        awards.add({
+          "won": award['won'],
+          "awardName": award['name'],
+          "awardCategory": award['category'],
+          "year": award['year'],
+          "nominee": award['nominee'],
+        });
+      }
+    }
+    show['awards'] = awards;
+    final properties = {
+      'title': show['title'],
+      'descript': show['description'] ?? show['plot'],
+      'releaseDate': show['orig_air_date'] ?? show['release_year'],
+      'origRunTime': show['episode_runtime'] ?? show['original_runtime'],
+      'rating': show['series_rating'] ?? show['film_rating'],
+      'stars': show['quality_rating'],
+      'genre': show['genres'],
+      'cast': show['cast'],
+      'award': show['awards'],
+      'director': show['directors'],
+    };
+    return properties;
   }
 }
