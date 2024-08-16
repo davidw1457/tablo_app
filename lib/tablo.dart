@@ -7,37 +7,62 @@ class Tablo{
   final String serverID;
   final String privateIP;
   final TabloDatabase db;
+  final Function saveToDisk;
 
   static const _webServer = 'api.tablotv.com';
   static const _webFolder = 'assocserver/getipinfo/';
   static const _port = '8885';
   static const _maxBatchSize = 50;
   
-  Tablo._internalConstructor(this.serverID, this.privateIP, this.db);
+  Tablo._internalConstructor(this.serverID, this.privateIP, this.db, this.saveToDisk);
 
   static Future<List<Tablo>> getTablos() async {
-    // add functionality to look in databases folder first    
-    final url = Uri.https(_webServer, _webFolder);
-    final response = await http.get(url);
-    final responseBody = json.decode(response.body);
+    final tabloIDs = await _getCaches();
+    if (tabloIDs.isEmpty) {
+      final url = Uri.https(_webServer, _webFolder);
+      final response = await http.get(url);
+      final responseBody = json.decode(response.body);
+      for (final tablo in responseBody['cpes']) {
+        tabloIDs.add({
+          'serverID': tablo['serverid'],
+          'privateIP': tablo['private_ip'],
+        });
+      }
+    }
+    
     final tablos = <Tablo>[];
-    for (final tablo in responseBody['cpes']) {
+    for (final serverIDs in tabloIDs) {
+      final tabloDB = await TabloDatabase.getDatabase(serverIDs['serverID']!);
       tablos.add(Tablo._internalConstructor(
-        tablo['serverid'],
-        tablo['private_ip'],
-        TabloDatabase.getDatabase(tablo['serverid'], tablo['name'], tablo['private_ip'])
-      ));
+          serverIDs['serverID']!,
+          serverIDs['privateIP']!,
+          tabloDB,
+          tabloDB.saveToDisk
+        )
+      );
       
-      await tablos.last.updateSystemInfoTable();
-      await tablos.last.updateChannels();
-      await tablos.last.updateGuideShows();
+      if (tabloDB.isNew) {
+        await tablos.last.updateSystemInfoTable();
+        await tablos.last.updateChannels();
+        await tablos.last.updateGuideShows();
+        tablos.last.saveToDisk();
+      }
     }
     return tablos;
   }
 
-  Future<bool> pingServer() async {
-    final responseBody = await _get('server/info') as Map<String, dynamic>;
-    return utf8.decode(((responseBody['server_id']) as String).codeUnits) == serverID;
+  static Future<bool> pingServer(String ipAddress, String serverID) async {
+    final url = Uri.http('$ipAddress:$_port', 'server/info');
+    var pingResponse = false;
+    try {
+      final response = await http.get(url);
+      final body = utf8.decode(response.body.codeUnits);
+      final responseBody = json.decode(body) as Map<String, dynamic>;
+      pingResponse = responseBody['server_id'] == serverID;
+    } on Exception {
+      return false;
+    }
+    return pingResponse;
   }
 
   Future<Map<String, dynamic>> getAllRecordings() async {
@@ -216,4 +241,28 @@ class Tablo{
     };
     return properties;
   }
+  
+  static Future<List<Map<String, String>>> _getCaches () async {
+    final tabloIDs = <Map<String, String>>[];
+    final databaseDirectory = Directory('databases');
+    final databases = databaseDirectory.list();
+    await for (final database in databases) {
+      if (database.path.substring(database.path.length - 5) == 'cache') {
+        final serverID = database.path.substring(10, database.path.length - 6);
+        final privateIP = TabloDatabase.getIP(database.path);
+        if (privateIP != null && await pingServer(privateIP, serverID)) {
+          tabloIDs.add({
+            'serverID': serverID,
+            'privateIP': privateIP,
+          });
+        }
+      }
+    }
+    return tabloIDs;
+  }
+
+  
+  // saveToDisk() {
+  //   db.saveToDisk();
+  // }
 }

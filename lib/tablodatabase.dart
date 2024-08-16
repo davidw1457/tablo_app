@@ -5,12 +5,22 @@ class TabloDatabase{
   final Database db;
   final String serverID;
   static const _dbVer = 1;
+  
+  bool get isNew {
+    ResultSet result;
+    try {
+      result = db.select('SELECT serverID FROM systemInfo;');
+    } on SqliteException {
+      return true;
+    }
+    return result.isEmpty || result.first['serverID'] != serverID;
+  }
 
   TabloDatabase._internalConstructor(this.db, this.serverID) {
     try {
-      final result = db.select('select * from systemInfo');
+      final result = db.select('SELECT dbVer FROM systemInfo;');
       final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
-      if (result.isEmpty || dbVer != _dbVer) {
+      if (dbVer == null || dbVer != _dbVer) {
         _init();
       }
     } on SqliteException {
@@ -18,18 +28,22 @@ class TabloDatabase{
     }
   }
 
-  static TabloDatabase getDatabase(String serverID, String name, String privateIP) {
+  static Future<TabloDatabase> getDatabase(String serverID) async {
     Directory('databases').createSync();
     final databaseLocal = sqlite3.open('databases/$serverID.cache');
     final databaseMemory = sqlite3.openInMemory();
-    databaseLocal.backup(databaseMemory);
-    databaseLocal.dispose();
+    await _backup(databaseLocal, databaseMemory);
+    if (_validate(databaseLocal, databaseMemory)) {
+      databaseLocal.dispose();
+    } else {
+      throw SqliteException(1, 'Error copying db to memory');
+    }
     return TabloDatabase._internalConstructor(databaseMemory, serverID);
   }
 
   _init() {
     final newDB = sqlite3.openInMemory();
-    newDB.backup(db);
+    _backup(newDB, db);
     newDB.dispose();
 
     _createSystemInfoTable();
@@ -37,6 +51,7 @@ class TabloDatabase{
     _createRecordingTables();
     _createErrorTable();
     _createSettingsTables();
+    saveToDisk();
   }
 
   _createSystemInfoTable() {
@@ -53,7 +68,6 @@ class TabloDatabase{
         freeSize INT
       );
     ''');
-    saveToDisk();
   }
 
   _createGuideTables() {
@@ -248,7 +262,6 @@ class TabloDatabase{
         teamID        INT NOT NULL
       );
     ''');
-    saveToDisk();
   }
 
   _createRecordingTables() {
@@ -284,7 +297,6 @@ class TabloDatabase{
         comSkipState      TEXT
       );
     ''');
-    saveToDisk();
   }
 
   _createErrorTable() {
@@ -305,7 +317,6 @@ class TabloDatabase{
         errorDesc         TEXT
       );
     ''');
-    saveToDisk();
   }
 
   _createSettingsTables() {
@@ -320,7 +331,6 @@ class TabloDatabase{
         queueID           INT NOT NULL PRIMARY KEY
       );
     ''');
-    saveToDisk();
   }
   
   updateSystemInfoTable(Map<String, dynamic> sysInfo) {
@@ -351,7 +361,6 @@ class TabloDatabase{
         totalSize = ${sysInfo['totalSize']},
         freeSize = ${sysInfo['freeSize']};
     ''');
-    saveToDisk();
   }
 
   updateChannels(List<Map<String, dynamic>> channels) {
@@ -383,7 +392,6 @@ class TabloDatabase{
           network = ${channel['network']};
       ''');
     }
-    saveToDisk();
   }
   
   updateGuideShows(List<Map<String, dynamic>> guideShows) {
@@ -490,7 +498,6 @@ class TabloDatabase{
         }
       }
     }
-    saveToDisk();
   }
  
   String _sanitizeString(String value) {
@@ -532,7 +539,7 @@ class TabloDatabase{
 
   saveToDisk() {
     final writedb = sqlite3.open('databases/$serverID.cache');
-    db.backup(writedb);
+    _backup(db, writedb);
     writedb.dispose();
   }
   
@@ -583,7 +590,6 @@ class TabloDatabase{
         }
       }
     }
-    saveToDisk();
     return lookup;
   }
   
@@ -645,6 +651,50 @@ class TabloDatabase{
       // Add additional conditions for recordings & airings as needed
     }
     return (dateTime.millisecondsSinceEpoch ~/ 1000).toString();
+  }
+
+  static String? getIP(String databasePath) {
+    String? privateIP;
+    try {
+      final db = sqlite3.open(databasePath);
+      final result = db.select('SELECT privateIP FROM systemInfo;');
+      privateIP = result.first['privateIP'];
+    } on Exception {
+      return null;
+    }
+    return privateIP;
+  }
+  
+  static bool _validate(Database databaseLocal, Database databaseMemory) {
+    try {
+      const sql = 'SELECT serverID FROM systemInfo;';
+      ResultSet? localResults;
+      try {
+        localResults = databaseLocal.select(sql);
+      } on SqliteException {
+        try {
+          databaseMemory.select(sql);
+        } on SqliteException {
+          return true;
+        }
+        return false;
+      }
+      final memoryResults = databaseMemory.select(sql);
+      if (localResults.length != memoryResults.length) {
+        return false;
+      } else if (localResults.isNotEmpty) {
+        return localResults.first['serverID'] == memoryResults.first['serverID'];
+      } else {
+        return true;
+      }
+    } on SqliteException {
+      return false;
+    }
+  }
+  
+  static _backup(Database fromDatabase, Database toDatabase) async {
+    final stream = fromDatabase.backup(toDatabase);
+    await stream.drain();
   }
     
 }
