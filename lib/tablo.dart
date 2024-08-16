@@ -184,7 +184,7 @@ class Tablo{
   }
 
   String _getShowType(String path) {
-    return path.split("/")[1];
+    return path.split("/")[2];
   }
   
   Map<String, dynamic> _getShowProperties(Map<String, dynamic>record) {
