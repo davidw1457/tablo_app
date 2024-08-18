@@ -1,9 +1,14 @@
-import 'package:tablo_app/tablodatabase.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
 
-class Tablo{
+import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
+
+import 'package:tablo_app/tablo_database.dart';
+
+const currentLibrary = 'tablo';
+
+class Tablo {
   final String serverID;
   final String privateIP;
   final TabloDatabase db;
@@ -13,9 +18,17 @@ class Tablo{
   static const _webFolder = 'assocserver/getipinfo/';
   static const _port = '8885';
   static const _maxBatchSize = 50;
-  
-  Tablo._internalConstructor(this.serverID, this.privateIP, this.db, this.saveToDisk) {
-    print('${DateTime.now()}: Tablo._internalConstructor($serverID, $privateIP, $db, $saveToDisk)');
+  static Logger _log = Logger('temp');
+
+  static void redirectLog(Logger log) {
+    _log = log;
+    TabloDatabase.redirectLog(log);
+  }
+
+  Tablo._internalConstructor(
+      this.serverID, this.privateIP, this.db, this.saveToDisk) {
+    print(
+        '${DateTime.now()}: Tablo._internalConstructor($serverID, $privateIP, $db, $saveToDisk)');
   }
 
   static Future<List<Tablo>> getTablos() async {
@@ -32,23 +45,18 @@ class Tablo{
         });
       }
     }
-    
+
     final tablos = <Tablo>[];
     for (final serverIDs in tabloIDs) {
       final tabloDB = await TabloDatabase.getDatabase(serverIDs['serverID']!);
-      tablos.add(Tablo._internalConstructor(
-          serverIDs['serverID']!,
-          serverIDs['privateIP']!,
-          tabloDB,
-          tabloDB.saveToDisk
-        )
-      );
-      
+      tablos.add(Tablo._internalConstructor(serverIDs['serverID']!,
+          serverIDs['privateIP']!, tabloDB, tabloDB.saveToDisk));
+
       if (tabloDB.isNew) {
         await tablos.last.updateSystemInfoTable();
         await tablos.last.updateChannels();
         await tablos.last.updateGuideShows();
-        await tablos.last.updateGuideAirings();
+        // await tablos.last.updateGuideAirings();
         tablos.last.saveToDisk();
       }
     }
@@ -56,7 +64,8 @@ class Tablo{
   }
 
   static Future<bool> pingServer(String ipAddress, String serverID) async {
-    print('${DateTime.now()}: static Future<bool> pingServer($ipAddress, $serverID) async');
+    print(
+        '${DateTime.now()}: static Future<bool> pingServer($ipAddress, $serverID) async');
     final url = Uri.http('$ipAddress:$_port', 'server/info');
     var pingResponse = false;
     try {
@@ -71,23 +80,28 @@ class Tablo{
   }
 
   Future<Map<String, dynamic>> getAllRecordings() async {
-    print('${DateTime.now()}: Future<Map<String, dynamic>> getAllRecordings() async');
+    print(
+        '${DateTime.now()}: Future<Map<String, dynamic>> getAllRecordings() async');
     final recordings = await _get('recordings/airings') as List<dynamic>;
     final responseBody = await _batch(recordings);
     return responseBody;
   }
 
   Future<Map<String, dynamic>> getScheduled() async {
-    print('${DateTime.now()}: Future<Map<String, dynamic>> getScheduled() async');
-    final scheduled = await _get('guide/airings?state=scheduled') as List<dynamic>;
-    final conflicted = await _get('guide/airings?state=conflicted') as List<dynamic>;
+    print(
+        '${DateTime.now()}: Future<Map<String, dynamic>> getScheduled() async');
+    final scheduled =
+        await _get('guide/airings?state=scheduled') as List<dynamic>;
+    final conflicted =
+        await _get('guide/airings?state=conflicted') as List<dynamic>;
     scheduled.addAll(conflicted);
     final responseBody = await _batch(scheduled);
     return responseBody;
   }
 
   Future<Map<String, dynamic>> getFullGuide() async {
-    print('${DateTime.now()}: Future<Map<String, dynamic>> getFullGuide() async');
+    print(
+        '${DateTime.now()}: Future<Map<String, dynamic>> getFullGuide() async');
     final fullGuide = await _get('guide/airings') as List<dynamic>;
     final responseBody = await _batch(fullGuide);
     return responseBody;
@@ -150,7 +164,7 @@ class Tablo{
         'channelType': 'guide',
         'keepRecording': show['keep']['rule'],
         'count': show['keep']['count'],
-        'showType' : _getShowType(show['path'])
+        'showType': _getShowType(show['path'])
       });
       guideShows.last.addAll(_getShowProperties(show));
     }
@@ -166,7 +180,9 @@ class Tablo{
     for (final airing in guideAiringsDesc.values) {
       final showType = _getShowType(airing['path']);
       final episodeID = _getEpisodeID(airing);
-      final showID = _getID(airing['series_path'] ?? airing['sport_path'] ?? airing['movie_path']);
+      final showID = _getID(airing['series_path'] ??
+          airing['sport_path'] ??
+          airing['movie_path']);
       guideAirings.add({
         'airingID': airing['object_id'],
         'showID': showID,
@@ -178,13 +194,15 @@ class Tablo{
         'episodeID': episodeID,
       });
       if (showType != 'movies') {
-        guideEpisodes[episodeID!] = _createEpisodeMap(airing['episode'] ?? airing['event'], showType, showID!);
+        guideEpisodes[episodeID!] = _createEpisodeMap(
+            airing['episode'] ?? airing['event'], showType, showID!);
       }
     }
     db.updateGuideAirings(guideAirings, guideEpisodes);
   }
 
-  Map<String, dynamic> _createEpisodeMap(Map<String, dynamic> episode, String showType, int showID) {
+  Map<String, dynamic> _createEpisodeMap(
+      Map<String, dynamic> episode, String showType, int showID) {
     final episodeMap = <String, dynamic>{};
     if (showType == 'sports' && episode['teams'].length > 0) {
       final teams = <Map<String, dynamic>>[];
@@ -196,11 +214,12 @@ class Tablo{
       }
       episodeMap['teams'] = teams;
     }
-    episodeMap['showID']= showID;
+    episodeMap['showID'] = showID;
     episodeMap['title'] = episode['title'];
     episodeMap['descript'] = episode['description'];
     episodeMap['episode'] = episode['number'];
-    episodeMap['season'] = episode['season_number']?.toString() ?? episode['season']?.toString();
+    episodeMap['season'] =
+        episode['season_number']?.toString() ?? episode['season']?.toString();
     episodeMap['seasonType'] = episode['season_type'];
     episodeMap['airDate'] = episode['orig_air_date'];
     episodeMap['homeTeamID'] = ['home_team_id'];
@@ -212,7 +231,8 @@ class Tablo{
     final url = Uri.http('$privateIP:$_port', path);
     final response = await http.get(url).timeout(const Duration(seconds: 30));
     if (response.statusCode < 200 || response.statusCode > 299) {
-      throw HttpException('Unable to connect to $path: ${response.statusCode} ${response.body}');
+      throw HttpException(
+          'Unable to connect to $path: ${response.statusCode} ${response.body}');
     }
     final body = utf8.decode(response.body.codeUnits);
     return json.decode(body);
@@ -223,9 +243,11 @@ class Tablo{
     final url = Uri.http('$privateIP:$_port', path);
     http.Response response;
     try {
-      response = await http.post(url, body: data).timeout(const Duration(seconds: 30));
+      response =
+          await http.post(url, body: data).timeout(const Duration(seconds: 30));
     } on Exception {
-      response = await http.post(url, body: data).timeout(const Duration(seconds: 30));
+      response =
+          await http.post(url, body: data).timeout(const Duration(seconds: 30));
     }
     final body = utf8.decode(response.body.codeUnits);
     print('${DateTime.now()}: return: ${json.decode(body)};');
@@ -233,7 +255,8 @@ class Tablo{
   }
 
   Future<Map<String, dynamic>> _batch(List<dynamic> list) async {
-    print('${DateTime.now()}: Future<Map<String, dynamic>> _batch($list) async');
+    print(
+        '${DateTime.now()}: Future<Map<String, dynamic>> _batch($list) async');
     final data = _listStringMerge(list, _maxBatchSize);
     final responseBody = <String, dynamic>{};
     for (final datum in data) {
@@ -245,7 +268,8 @@ class Tablo{
   }
 
   List<String> _listStringMerge(List<dynamic> list, int batchSize) {
-    print('${DateTime.now()}: List<String> _listStringMerge($list, $batchSize)');
+    print(
+        '${DateTime.now()}: List<String> _listStringMerge($list, $batchSize)');
     final output = <String>[];
     final buffer = StringBuffer('["${list[0]}"');
     for (int i = 1; i < list.length; ++i) {
@@ -262,7 +286,7 @@ class Tablo{
     output.add(buffer.toString());
     return output;
   }
-  
+
   Future<Map<String, int>> _getSpace() async {
     print('${DateTime.now()}: Future<Map<String, int>> _getSpace() async');
     var totalSize = 0;
@@ -277,7 +301,7 @@ class Tablo{
       'freeSize': freeSize,
     };
   }
-  
+
   int? _getID(String? path) {
     print('${DateTime.now()}: String? _getID($path)');
     int? intID;
@@ -298,9 +322,10 @@ class Tablo{
     print('${DateTime.now()}: String _getShowType($path)');
     return path.split("/")[2];
   }
-  
-  Map<String, dynamic> _getShowProperties(Map<String, dynamic>record) {
-    print('${DateTime.now()}: Map<String, dynamic> _getShowProperties($record)');
+
+  Map<String, dynamic> _getShowProperties(Map<String, dynamic> record) {
+    print(
+        '${DateTime.now()}: Map<String, dynamic> _getShowProperties($record)');
     final show = record['series'] ?? record['movie'] ?? record['sport'];
     final awards = <Map<String, dynamic>>[];
     if (show['awards'] != null && show['awards'].length > 0) {
@@ -329,9 +354,10 @@ class Tablo{
     };
     return properties;
   }
-  
-  static Future<List<Map<String, String>>> _getCaches () async {
-    print('${DateTime.now()}: static Future<List<Map<String, String>>> _getCaches ()');
+
+  static Future<List<Map<String, String>>> _getCaches() async {
+    print(
+        '${DateTime.now()}: static Future<List<Map<String, String>>> _getCaches ()');
     final tabloIDs = <Map<String, String>>[];
     final databaseDirectory = Directory('databases');
     final databases = databaseDirectory.list();
@@ -349,14 +375,16 @@ class Tablo{
     }
     return tabloIDs;
   }
-  
+
   String? _getEpisodeID(Map<String, dynamic> record) {
     print('${DateTime.now()}: String? _getEpisodeID($record)');
     String? episodeID;
     final recordType = _getShowType(record['path']);
     if (recordType == 'series' || recordType == 'sports') {
       final showID = _getID(record['series_path'] ?? record['sport_path']);
-      final seasonNumber = record['episode']?['season_number'] ?? record['event']?['season'] ?? '0';
+      final seasonNumber = record['episode']?['season_number'] ??
+          record['event']?['season'] ??
+          '0';
       int episodeNumber = record['episode']?['number'] ?? 0;
       if (episodeNumber == 0) {
         final airDate = DateTime.parse(record['airing_details']['datetime']);

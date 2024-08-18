@@ -1,30 +1,56 @@
-// import 'package:flutter/material.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
-import 'package:tablo_app/tablo.dart';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+import 'package:logging/logging.dart';
+
+import 'package:tablo_app/tablo.dart';
+
 const testServerID = '';
+const maxLogLength = 150;
+const logName = 'log';
+const currentLibrary = 'main';
+
+final log = Logger(logName);
 
 void main() async {
   // runApp(const MyApp());
+  log.onRecord.listen((record) {
+    // TODO: Update this to log somewhere useful or switch to Flutter debugprint
+    final messageLength = record.message.length;
+    final message = (messageLength > maxLogLength ? record.message.substring(0, maxLogLength) : record.message).replaceAll('`', '~');
+    print(
+        '"${DateTime.now()}", "${record.level}", "$message"');
+  });
+  Tablo.redirectLog(log);
+  // TODO: Delete the next several lines once the database format is finalized and no longer needs to be recreated from scratch each time
+  log.info('$currentLibrary: Backing up or deleting database from previous execution.');
   final database = File('databases\\$testServerID.cache');
   if (database.existsSync()) {
+    log.info('$testServerID.cache exists.');
     final oldDatabase = File('databases\\$testServerID.cache.old');
     if (!oldDatabase.existsSync()) {
+      log.info('Renaming $testServerID.cache');
       database.renameSync('databases\\$testServerID.cache.old');
-    } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10/9)) {
+    } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
+      log.info(
+          'Deleting $testServerID.cache.old and renaming $testServerID.cache');
       oldDatabase.deleteSync();
       database.renameSync('databases\\$testServerID.cache.old');
     } else {
+      log.info(
+          '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
       database.deleteSync();
-    } 
+    }
   }
   final timer = Stopwatch();
+  log.info('Creating Tablo objects');
   timer.start();
   final tablos = await Tablo.getTablos();
   timer.stop();
-  print('${DateTime.now()}: running time: ${timer.elapsed}');
-  print('${DateTime.now()}: commented out');
+  log.info('Completed creating Tablo objects');
+  log.info('Total elapsed time: ${timer.elapsed}');
+  log.info('Execution complete.');
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
   // stopwatch.start();

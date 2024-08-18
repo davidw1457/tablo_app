@@ -6,7 +6,7 @@ void main() async {
 
   test('Can instatiate Tablo object list', () async {
     expect(tablos, isA<List<Tablo>>());
-  });  
+  });
 
   test('Tablos have IP addresses', () async {
     for (final tablo in tablos) {
@@ -22,7 +22,8 @@ void main() async {
 
   test('pingServer() returns true if server is accessible', () async {
     for (final tablo in tablos) {
-      final accessible = await tablo.pingServer();
+      final accessible =
+          await Tablo.pingServer(tablo.privateIP, tablo.serverID);
       expect(accessible, isTrue);
     }
   });
@@ -43,6 +44,4 @@ void main() async {
     final fullGuide = await tablo.getScheduled();
     expect(fullGuide, isA<Map<String, dynamic>>());
   }, timeout: const Timeout.factor(14));
-
-
 }

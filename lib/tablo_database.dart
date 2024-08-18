@@ -1,11 +1,19 @@
 import 'dart:io';
-import 'package:sqlite3/sqlite3.dart';
 
-class TabloDatabase{
+import 'package:sqlite3/sqlite3.dart';
+import 'package:logging/logging.dart';
+
+class TabloDatabase {
   final Database db;
   final String serverID;
   static const _dbVer = 1;
-  
+
+  static Logger _log = Logger('temp');
+
+  static void redirectLog(Logger log) {
+    _log = log;
+  }
+
   bool get isNew {
     print('${DateTime.now()}: isNew');
     ResultSet result;
@@ -18,7 +26,8 @@ class TabloDatabase{
   }
 
   TabloDatabase._internalConstructor(this.db, this.serverID) {
-    print('${DateTime.now()}: TabloDatabase._internalConstructor($db, $serverID)');
+    print(
+        '${DateTime.now()}: TabloDatabase._internalConstructor($db, $serverID)');
     try {
       final result = db.select('SELECT dbVer FROM systemInfo;');
       final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
@@ -31,7 +40,8 @@ class TabloDatabase{
   }
 
   static Future<TabloDatabase> getDatabase(String serverID) async {
-    print('${DateTime.now()}: static Future<TabloDatabase> getDatabase($serverID) async');
+    print(
+        '${DateTime.now()}: static Future<TabloDatabase> getDatabase($serverID) async');
     Directory('databases').createSync();
     final databaseLocal = sqlite3.open('databases/$serverID.cache');
     final databaseMemory = sqlite3.openInMemory();
@@ -352,7 +362,7 @@ class TabloDatabase{
       );
     ''');
   }
-  
+
   updateSystemInfoTable(Map<String, dynamic> sysInfo) {
     print('${DateTime.now()}: updateSystemInfoTable($sysInfo)');
     sysInfo = _sanitizeMap(sysInfo);
@@ -415,7 +425,7 @@ class TabloDatabase{
       ''');
     }
   }
-  
+
   updateGuideShows(List<Map<String, dynamic>> guideShows) {
     print('${DateTime.now()}: updateGuideShows($guideShows)');
     var lookup = <String, Map>{};
@@ -523,8 +533,10 @@ class TabloDatabase{
     }
   }
 
-  updateGuideAirings(List<Map<String, dynamic>> guideAirings, Map<String, Map<String, dynamic>> guideEpisodes) {
-    print('${DateTime.now()}: updateGuideAirings($guideAirings, $guideEpisodes)');
+  updateGuideAirings(List<Map<String, dynamic>> guideAirings,
+      Map<String, Map<String, dynamic>> guideEpisodes) {
+    print(
+        '${DateTime.now()}: updateGuideAirings($guideAirings, $guideEpisodes)');
     var lookup = <String, Map>{};
     saveToDisk();
 
@@ -580,7 +592,8 @@ class TabloDatabase{
     }
     saveToDisk();
     for (final airing in guideAiringsClean) {
-      final row = db.select('SELECT * FROM scheduled WHERE scheduledID = ${airing['scheduledID']}');
+      final row = db.select(
+          'SELECT * FROM scheduled WHERE scheduledID = ${airing['scheduledID']}');
       if (row.length > 0) print(row.first);
       db.execute('''
         INSERT INTO airing (
@@ -612,16 +625,15 @@ class TabloDatabase{
           episodeID = ${airing['episodeID']};
       ''');
       saveToDisk();
-
     }
   }
-  
+
   String _sanitizeString(String value) {
     print('${DateTime.now()}: String _sanitizeString($value)');
     var cleanValue = value.replaceAll("'", "''");
     return cleanValue == 'null' ? cleanValue : "'$cleanValue'";
   }
-  
+
   Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
     print('${DateTime.now()}: Map<String, dynamic> _sanitizeMap($map)');
     final cleanMap = <String, dynamic>{};
@@ -638,7 +650,7 @@ class TabloDatabase{
     }
     return cleanMap;
   }
-  
+
   List<dynamic> _sanitizeList(List<dynamic> list) {
     print('${DateTime.now()}: List<dynamic> _sanitizeList($list)');
     final cleanList = <dynamic>[];
@@ -662,9 +674,10 @@ class TabloDatabase{
     _backup(db, writedb);
     writedb.dispose();
   }
-  
+
   Map<String, Map> _updateLookups(dynamic items, Map<String, Map> lookup) {
-    print('${DateTime.now()}: Map<String, Map> _updateLookups($items, $lookup)');
+    print(
+        '${DateTime.now()}: Map<String, Map> _updateLookups($items, $lookup)');
     final uniqueInput = <String, Set>{};
     for (final table in lookup.keys) {
       uniqueInput[table] = <String>{};
@@ -675,7 +688,8 @@ class TabloDatabase{
     } else if (items is Map) {
       keys.addAll(items.keys);
     } else {
-      throw FormatException("_updateLookups: items must be List or Map. Input type: ${items.runtimeType}");
+      throw FormatException(
+          "_updateLookups: items must be List or Map. Input type: ${items.runtimeType}");
     }
     for (final key in keys) {
       final item = items[key];
@@ -750,7 +764,7 @@ class TabloDatabase{
     }
     return lookup;
   }
-  
+
   dynamic _addLookupIDs(dynamic items, Map<String, dynamic> lookup) {
     print('${DateTime.now()}: dynamic _addLookupIDs($items, $lookup)');
     final keys = <dynamic>[];
@@ -759,7 +773,8 @@ class TabloDatabase{
     } else if (items is Map) {
       keys.addAll(items.keys);
     } else {
-      throw FormatException("_addLookupIDs: items must be List or Map. Input type: ${items.runtimeType}");
+      throw FormatException(
+          "_addLookupIDs: items must be List or Map. Input type: ${items.runtimeType}");
     }
     for (final key in keys) {
       for (final table in lookup.keys) {
@@ -786,7 +801,8 @@ class TabloDatabase{
           for (final table in lookup.keys) {
             final lookupValue = items[key]['award'][j][table];
             if (lookupValue != null) {
-              items[key]['award'][j]['${table}ID'] = (lookup[table] as Map)[lookupValue];
+              items[key]['award'][j]['${table}ID'] =
+                  (lookup[table] as Map)[lookupValue];
             }
           }
         }
@@ -804,7 +820,7 @@ class TabloDatabase{
     }
     return lookupTableMap;
   }
-  
+
   String? _convertDateTimeToInt(dynamic date) {
     print('${DateTime.now()}: String? _convertDateTimeToInt($date)');
     var dateTime = DateTime.fromMicrosecondsSinceEpoch(0);
@@ -833,9 +849,10 @@ class TabloDatabase{
     }
     return privateIP;
   }
-  
+
   static bool _validate(Database databaseLocal, Database databaseMemory) {
-    print('${DateTime.now()}: static bool _validate($databaseLocal, $databaseMemory)');
+    print(
+        '${DateTime.now()}: static bool _validate($databaseLocal, $databaseMemory)');
     try {
       const sql = 'SELECT serverID FROM systemInfo;';
       ResultSet? localResults;
@@ -853,7 +870,8 @@ class TabloDatabase{
       if (localResults.length != memoryResults.length) {
         return false;
       } else if (localResults.isNotEmpty) {
-        return localResults.first['serverID'] == memoryResults.first['serverID'];
+        return localResults.first['serverID'] ==
+            memoryResults.first['serverID'];
       } else {
         return true;
       }
@@ -861,11 +879,11 @@ class TabloDatabase{
       return false;
     }
   }
-  
+
   static _backup(Database fromDatabase, Database toDatabase) async {
-    print('${DateTime.now()}: static _backup($fromDatabase, $toDatabase) async');
+    print(
+        '${DateTime.now()}: static _backup($fromDatabase, $toDatabase) async');
     final stream = fromDatabase.backup(toDatabase);
     await stream.drain();
   }
-    
 }
