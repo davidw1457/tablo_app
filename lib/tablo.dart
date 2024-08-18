@@ -178,30 +178,33 @@ class Tablo{
         'episodeID': episodeID,
       });
       if (showType != 'movies') {
-        guideEpisodes[episodeID!] = {
-          'showID': showID,
-          'title': airing['episode']?['title'] ?? airing['event']?['title'],
-          'descript': airing['episode']?['description'] ?? airing['event']?['description'],
-          'episode': airing['episode']?['number'],
-          'season': airing['episode']?['season_number'].toString() ?? airing['event']?['season'].toString(),
-          'seasonType': airing['event']?['season_type'],
-          'airDate': airing['episode']?['orig_air_date'],
-          'venue': airing['event']?['venue'],
-          'homeTeamID': airing['event']?['home_team_id'],
-        };
-        if (showType == 'sports' && airing['event']['teams'].length > 0) {
-          final teams = <Map<String, dynamic>>[];
-          for (final team in airing['event']['teams']) {
-            teams.add({
-              'team': team['name'],
-              'teamID': team['team_id'],
-            });
-          }
-          guideEpisodes[episodeID]!['team'] = teams;
-        }
+        guideEpisodes[episodeID!] = _createEpisodeMap(airing['episode'] ?? airing['event'], showType, showID!);
       }
     }
     db.updateGuideAirings(guideAirings, guideEpisodes);
+  }
+
+  Map<String, dynamic> _createEpisodeMap(Map<String, dynamic> episode, String showType, int showID) {
+    final episodeMap = <String, dynamic>{};
+    if (showType == 'sports' && episode['teams'].length > 0) {
+      final teams = <Map<String, dynamic>>[];
+      for (final team in episode['teams']) {
+        teams.add({
+          'team': team['name'],
+          'teamID': team['team_id'],
+        });
+      }
+      episodeMap['teams'] = teams;
+    }
+    episodeMap['showID']= showID;
+    episodeMap['title'] = episode['title'];
+    episodeMap['descript'] = episode['description'];
+    episodeMap['episode'] = episode['number'];
+    episodeMap['season'] = episode['season_number']?.toString() ?? episode['season']?.toString();
+    episodeMap['seasonType'] = episode['season_type'];
+    episodeMap['airDate'] = episode['orig_air_date'];
+    episodeMap['homeTeamID'] = ['home_team_id'];
+    return episodeMap;
   }
 
   Future<dynamic> _get(String path) async {

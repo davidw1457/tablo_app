@@ -53,7 +53,6 @@ class TabloDatabase{
     _createSystemInfoTable();
     _createGuideTables();
     _createRecordingTables();
-    _createErrorTable();
     _createSettingsTables();
     saveToDisk();
   }
@@ -221,12 +220,6 @@ class TabloDatabase{
       );
     ''');
     db.execute('''
-      CREATE TABLE venue (
-        venueID       INTEGER PRIMARY KEY,
-        venue         TEXT NOT NULL
-      );
-    ''');
-    db.execute('''
       CREATE TABLE team (
         teamID        INT NOT NULL PRIMARY KEY,
         team          TEXT NOT NULL
@@ -251,12 +244,10 @@ class TabloDatabase{
         seasonID        INT,
         seasonTypeID    INT,
         originalAirDate INT,
-        venueID         INT,
         homeTeamID      INT,
         FOREIGN KEY (showID) REFERENCES show(showID),
         FOREIGN KEY (seasonID) REFERENCES season(seasonID),
         FOREIGN KEY (seasonTypeID) REFERENCES seasonType(seasonTypeID),
-        FOREIGN KEY (venueID) REFERENCES venue(venueID),
         FOREIGN KEY (homeTeamID) REFERENCES team(teamID)
       );
     ''');
@@ -290,56 +281,59 @@ class TabloDatabase{
   _createRecordingTables() {
     print('${DateTime.now()}: _createRecordingTables()');
     db.execute('''
+      CREATE TABLE recordingState (
+        recordingStateID  INTEGER PRIMARY KEY,
+        recordingState    TEXT
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE comSkipState (
+        comSkipStateID    INTEGER PRIMARY KEY,
+        comSkipState      TEXT
+      );
+    ''');
+    db.execute('''
       CREATE TABLE recordingShow (
-        recordingShowID   INT NOT NULL PRIMARY KEY,
-        showID            INT
+        recordingShowID INT NOT NULL PRIMARY KEY,
+        showID INT NOT NULL,
+        FOREIGN KEY (showID) REFERENCES show(showID)
       );
     ''');
     db.execute('''
       CREATE TABLE recording (
         recordingID       INT NOT NULL PRIMARY KEY,
-        recordingShowID   INT,
-        datetime          INT,
-        airingDuration    INT,
-        channelID         INT,
-        stateID           INT,
-        clean             INT,
-        recordingDuration INT,
-        comSkipStateID    INT,
-        episodeID         INT
+        recordingShowID   INT NOT NULL,
+        airDate           INT NOT NULL,
+        airingDuration    INT NOT NULL,
+        channelID         INT NOT NULL,
+        channelTypeID     INT NOT NULL,
+        recordingStateID  INT NOT NULL,
+        clean             INT NOT NULL,
+        recordingDuration INT NOT NULL,
+        comSkipStateID    INT NOT NULL,
+        episodeID         INT NOT NULL,
+        FOREIGN KEY (recordingShowID) REFERENCES recordingShow(recordingShowID),
+        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        FOREIGN KEY (recordingStateID) REFERENCES recordingState(recordingStateID),
+        FOREIGN KEY (comSkipStateID) REFERENCES comSkipState(comSkipStateID),
+        FOREIGN KEY (episodeID) REFERENCES episode(episodeID)
       );
     ''');
-    db.execute('''
-      CREATE TABLE state (
-        stateID           INT NOT NULL PRIMARY KEY,
-        state             TEXT
-      );
-    ''');
-    db.execute('''
-      CREATE TABLE comSkipState (
-        comSkipStateID    INT NOT NULL PRIMARY KEY,
-        comSkipState      TEXT
-      );
-    ''');
-  }
-
-  _createErrorTable() {
-    print('${DateTime.now()}: _createErrorTable()');
     db.execute('''
       CREATE TABLE error (
-        errorID           INT NOT NULL PRIMARY KEY,
-        recordingID       INT,
-        recordingShowID   INT,
-        showID            INT,
-        episodeID         INT,
-        channelID         INT,
-        datetime          INT,
-        duration          INT,
-        comSkipStateID    INT,
-        comSkipError      TEXT,
-        errorCode         TEXT,
-        errorDetails      TEXT,
-        errorDesc         TEXT
+        errorID           INTEGER PRIMARY KEY,
+        recordingID       INT NOT NULL,
+        recordingShowID   INT NOT NULL,
+        showID            INT NOT NULL,
+        episodeID         INT NOT NULL,
+        channelID         INT NOT NULL,
+        airDate           INT NOT NULL,
+        duration          INT NOT NULL,
+        comSkipStateID    INT NOT NULL,
+        comSkipError      TEXT NOT NULL,
+        errorCode         TEXT NOT NULL,
+        errorDetails      TEXT NOT NULL,
+        errorDesc         TEXT NOT NULL
       );
     ''');
   }
@@ -538,7 +532,6 @@ class TabloDatabase{
     lookup['scheduled'] = _getLookup('scheduled');
     lookup['season'] = _getLookup('season');
     lookup['seasonType'] = _getLookup('seasonType');
-    lookup['venue'] = _getLookup('venue');
     lookup = _updateLookups(guideAirings, lookup);
     lookup = _updateLookups(guideEpisodes, lookup);
     guideAirings = _addLookupIDs(guideAirings, lookup);
@@ -558,7 +551,6 @@ class TabloDatabase{
           seasonID,
           seasonTypeID,
           originalAirDate,
-          venueID,
           homeTeamID
         )
         VALUES (
@@ -570,14 +562,12 @@ class TabloDatabase{
           ${episode['seasonID']},
           ${episode['seasonTypeID']},
           ${_convertDateTimeToInt(episode['originalAirDate'])},
-          ${episode['venueID']},
           ${episode['homeTeamID']}
         ) ON CONFLICT DO UPDATE SET
           title = ${episode['title']},
           descript = ${episode['descript']},
           seasonTypeID = ${episode['seasonTypeID']},
           originalAirDate = ${_convertDateTimeToInt(episode['originalAirDate'])},
-          venueID = ${episode['venueID']},
           homeTeamID = ${episode['homeTeamID']};
       ''');
       if (episode['team'] != null && episode['team'].length > 0) {
