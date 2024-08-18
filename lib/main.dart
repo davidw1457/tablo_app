@@ -6,11 +6,11 @@ import 'package:logging/logging.dart';
 
 import 'package:tablo_app/tablo.dart';
 
-const testServerID = '';
 const maxLogLength = 150;
 const logName = 'log';
 const currentLibrary = 'main';
 
+final testServerID = getTestServerID();
 final log = Logger(logName);
 
 void main() async {
@@ -59,6 +59,22 @@ void main() async {
   // print(fullGuide);
   // print('type: ${fullGuide.runtimeType}');
   // print('seconds: ${stopwatch.elapsedMilliseconds / 1000}');
+}
+
+String getTestServerID() {
+  final databaseDirectory = Directory('databases');
+  if (!databaseDirectory.existsSync()) {
+    return "none";
+  } else {
+    final databaseFiles = databaseDirectory.listSync();
+    for (final file in databaseFiles) {
+      final path = file.path;
+      if (path.substring(path.length - 5) == 'cache') {
+        return path.substring(10).split('.')[0];
+      }
+    }
+  }
+  return "none";
 }
 
 /*
