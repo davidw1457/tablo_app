@@ -2,55 +2,46 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
-import 'package:logging/logging.dart';
 
 import 'package:tablo_app/tablo.dart';
+import 'package:tablo_app/log.dart';
 
-const maxLogLength = 150;
-const logName = 'log';
 const currentLibrary = 'main';
 
 final testServerID = getTestServerID();
-final log = Logger(logName);
+final log = Log();
 
 void main() async {
   // runApp(const MyApp());
-  log.onRecord.listen((record) {
-    // TODO: Update this to log somewhere useful or switch to Flutter debugprint
-    final messageLength = record.message.length;
-    final message = (messageLength > maxLogLength ? record.message.substring(0, maxLogLength) : record.message).replaceAll('`', '~');
-    print(
-        '"${DateTime.now()}", "${record.level}", "$message"');
-  });
   Tablo.redirectLog(log);
   // TODO: Delete the next several lines once the database format is finalized and no longer needs to be recreated from scratch each time
-  log.info('$currentLibrary: Backing up or deleting database from previous execution.');
+  ('$currentLibrary: Backing up or deleting database from previous execution.');
   final database = File('databases\\$testServerID.cache');
   if (database.existsSync()) {
-    log.info('$testServerID.cache exists.');
+    logMessage('$testServerID.cache exists.');
     final oldDatabase = File('databases\\$testServerID.cache.old');
     if (!oldDatabase.existsSync()) {
-      log.info('Renaming $testServerID.cache');
+      logMessage('Renaming $testServerID.cache');
       database.renameSync('databases\\$testServerID.cache.old');
     } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
-      log.info(
+      logMessage(
           'Deleting $testServerID.cache.old and renaming $testServerID.cache');
       oldDatabase.deleteSync();
       database.renameSync('databases\\$testServerID.cache.old');
     } else {
-      log.info(
+      logMessage(
           '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
       database.deleteSync();
     }
   }
   final timer = Stopwatch();
-  log.info('Creating Tablo objects');
+  logMessage('Creating Tablo objects');
   timer.start();
   final tablos = await Tablo.getTablos();
   timer.stop();
-  log.info('Completed creating Tablo objects');
-  log.info('Total elapsed time: ${timer.elapsed}');
-  log.info('Execution complete.');
+  logMessage('Completed creating Tablo objects');
+  logMessage('Total elapsed time: ${timer.elapsed}');
+  logMessage('Execution complete.');
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
   // stopwatch.start();
@@ -77,6 +68,13 @@ String getTestServerID() {
   return "none";
 }
 
+void logMessage(String message, {String? level}) {
+    if (level == null) {
+      log.logMessage(currentLibrary, message);
+    } else {
+      log.logMessage(currentLibrary, message, level: level);
+    }
+ }
 /*
 
 class MyApp extends StatelessWidget {

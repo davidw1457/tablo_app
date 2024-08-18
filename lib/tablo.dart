@@ -2,40 +2,49 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:logging/logging.dart';
 
+import 'package:tablo_app/log.dart';
 import 'package:tablo_app/tablo_database.dart';
 
-const currentLibrary = 'tablo';
-
 class Tablo {
+  /// Unique id for Tablo server.
   final String serverID;
+  /// IP address of Tablo server.
   final String privateIP;
-  final TabloDatabase db;
-  final Function saveToDisk;
+  /// Database cache of Tablo server data.
+  final TabloDatabase cache;
+  /// Save database cache to permanent storage.
+  final Function saveCacheToDisk;
 
-  static const _webServer = 'api.tablotv.com';
-  static const _webFolder = 'assocserver/getipinfo/';
-  static const _port = '8885';
-  static const _maxBatchSize = 50;
-  static Logger _log = Logger('temp');
+  static const _tabloApiServer = 'api.tablotv.com';
+  static const _tabloApiPath = 'assocserver/getipinfo/';
+  static const _tabloServerPort = '8885';
+  static const _maximumBatchItemCount = 50;
+  static const _currentLibrary = 'tablo';
 
-  static void redirectLog(Logger log) {
+  static Log _log = Log();
+
+  static void redirectLog(Log log) {
     _log = log;
+    log.logMessage(_currentLibrary, 'Redirected log.');
     TabloDatabase.redirectLog(log);
   }
 
-  Tablo._internalConstructor(
-      this.serverID, this.privateIP, this.db, this.saveToDisk) {
-    print(
-        '${DateTime.now()}: Tablo._internalConstructor($serverID, $privateIP, $db, $saveToDisk)');
+  static void _logMessage(String message, {String? level}) {
+    if (level == null) {
+      _log.logMessage(_currentLibrary, message);
+    } else {
+      _log.logMessage(_currentLibrary, message, level: level);
+    }
   }
 
+  Tablo._internalConstructor(this.serverID, this.privateIP, this.cache, this.saveCacheToDisk);
+
   static Future<List<Tablo>> getTablos() async {
-    print('${DateTime.now()}: static Future<List<Tablo>> getTablos() async');
+    _logMessage('Beginning getTablos');
     final tabloIDs = await _getCaches();
     if (tabloIDs.isEmpty) {
-      final url = Uri.https(_webServer, _webFolder);
+      final url = Uri.https(_tabloApiServer, _tabloApiPath);
       final response = await http.get(url).timeout(const Duration(seconds: 30));
       final responseBody = json.decode(response.body);
       for (final tablo in responseBody['cpes']) {
@@ -56,8 +65,8 @@ class Tablo {
         await tablos.last.updateSystemInfoTable();
         await tablos.last.updateChannels();
         await tablos.last.updateGuideShows();
-        // await tablos.last.updateGuideAirings();
-        tablos.last.saveToDisk();
+        await tablos.last.updateGuideAirings(scheduledOnly: true);
+        tablos.last.saveCacheToDisk();
       }
     }
     return tablos;
@@ -66,7 +75,7 @@ class Tablo {
   static Future<bool> pingServer(String ipAddress, String serverID) async {
     print(
         '${DateTime.now()}: static Future<bool> pingServer($ipAddress, $serverID) async');
-    final url = Uri.http('$ipAddress:$_port', 'server/info');
+    final url = Uri.http('$ipAddress:$_tabloServerPort', 'server/info');
     var pingResponse = false;
     try {
       final response = await http.get(url).timeout(const Duration(seconds: 30));
@@ -118,7 +127,7 @@ class Tablo {
     });
     final space = await _getSpace();
     fullInfo.addAll(space);
-    db.updateSystemInfoTable(fullInfo);
+    cache.updateSystemInfoTable(fullInfo);
   }
 
   Future<void> updateChannels() async {
@@ -148,7 +157,7 @@ class Tablo {
         'network': channel['channel']['network'],
       });
     }
-    db.updateChannels(channels);
+    cache.updateChannels(channels);
   }
 
   Future<void> updateGuideShows() async {
@@ -168,12 +177,19 @@ class Tablo {
       });
       guideShows.last.addAll(_getShowProperties(show));
     }
-    db.updateGuideShows(guideShows);
+    cache.updateGuideShows(guideShows);
   }
 
-  Future<void> updateGuideAirings() async {
-    print('${DateTime.now()}: Future<void> updateGuideAirings() async');
-    final guideAiringsList = await _get('guide/airings');
+  Future<void> updateGuideAirings({bool scheduledOnly = false}) async {
+    _logMessage('Beginning updateGuideAirings(scheduledOnly: $scheduledOnly)');
+    List<dynamic> guideAiringsList;
+    if (scheduledOnly) {
+      // JFC. Need to go through and normalize data so that these two can both return lists
+      // guideAiringsList = await _batch(['/guide/airings?state=scheduled', '/guide/airings?state=conflicted']);
+      guideAiringsList = <dynamic>[];
+    } else {
+      guideAiringsList = await _get('guide/airings');
+    }
     final guideAiringsDesc = await _batch(guideAiringsList);
     final guideAirings = <Map<String, dynamic>>[];
     final guideEpisodes = <String, Map<String, dynamic>>{};
@@ -198,7 +214,7 @@ class Tablo {
             airing['episode'] ?? airing['event'], showType, showID!);
       }
     }
-    db.updateGuideAirings(guideAirings, guideEpisodes);
+    cache.updateGuideAirings(guideAirings, guideEpisodes);
   }
 
   Map<String, dynamic> _createEpisodeMap(
@@ -228,7 +244,7 @@ class Tablo {
 
   Future<dynamic> _get(String path) async {
     print('${DateTime.now()}: Future<dynamic> _get($path) async');
-    final url = Uri.http('$privateIP:$_port', path);
+    final url = Uri.http('$privateIP:$_tabloServerPort', path);
     final response = await http.get(url).timeout(const Duration(seconds: 30));
     if (response.statusCode < 200 || response.statusCode > 299) {
       throw HttpException(
@@ -240,7 +256,7 @@ class Tablo {
 
   Future<dynamic> _post(String path, String data) async {
     print('${DateTime.now()}: Future<dynamic> _post($path, $data) async');
-    final url = Uri.http('$privateIP:$_port', path);
+    final url = Uri.http('$privateIP:$_tabloServerPort', path);
     http.Response response;
     try {
       response =
@@ -257,7 +273,7 @@ class Tablo {
   Future<Map<String, dynamic>> _batch(List<dynamic> list) async {
     print(
         '${DateTime.now()}: Future<Map<String, dynamic>> _batch($list) async');
-    final data = _listStringMerge(list, _maxBatchSize);
+    final data = _listStringMerge(list, _maximumBatchItemCount);
     final responseBody = <String, dynamic>{};
     for (final datum in data) {
       final iterResponseBody = await _post('batch', datum);

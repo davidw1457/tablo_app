@@ -1,16 +1,18 @@
 import 'dart:io';
 
 import 'package:sqlite3/sqlite3.dart';
-import 'package:logging/logging.dart';
+import 'package:tablo_app/log.dart';
+
+const currentLibrary = 'tablo_database';
 
 class TabloDatabase {
   final Database db;
   final String serverID;
   static const _dbVer = 1;
 
-  static Logger _log = Logger('temp');
+  static Log _log = Log();
 
-  static void redirectLog(Logger log) {
+  static void redirectLog(Log log) {
     _log = log;
   }
 
