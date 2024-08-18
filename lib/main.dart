@@ -1,11 +1,30 @@
 // import 'package:flutter/material.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 import 'package:tablo_app/tablo.dart';
+import 'dart:io';
+
+const testServerID = '';
 
 void main() async {
   // runApp(const MyApp());
+  final database = File('databases\\$testServerID.cache');
+  if (database.existsSync()) {
+    final oldDatabase = File('databases\\$testServerID.cache.old');
+    if (!oldDatabase.existsSync()) {
+      database.renameSync('databases\\$testServerID.cache.old');
+    } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10/9)) {
+      oldDatabase.deleteSync();
+      database.renameSync('databases\\$testServerID.cache.old');
+    } else {
+      database.deleteSync();
+    } 
+  }
+  final timer = Stopwatch();
+  timer.start();
   final tablos = await Tablo.getTablos();
-  print('commented out');
+  timer.stop();
+  print('${DateTime.now()}: running time: ${timer.elapsed}');
+  print('${DateTime.now()}: commented out');
   // final tablo = tablos[0];
   // final stopwatch = Stopwatch();
   // stopwatch.start();

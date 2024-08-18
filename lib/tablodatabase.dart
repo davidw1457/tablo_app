@@ -7,6 +7,7 @@ class TabloDatabase{
   static const _dbVer = 1;
   
   bool get isNew {
+    print('${DateTime.now()}: isNew');
     ResultSet result;
     try {
       result = db.select('SELECT serverID FROM systemInfo;');
@@ -17,6 +18,7 @@ class TabloDatabase{
   }
 
   TabloDatabase._internalConstructor(this.db, this.serverID) {
+    print('${DateTime.now()}: TabloDatabase._internalConstructor($db, $serverID)');
     try {
       final result = db.select('SELECT dbVer FROM systemInfo;');
       final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
@@ -29,6 +31,7 @@ class TabloDatabase{
   }
 
   static Future<TabloDatabase> getDatabase(String serverID) async {
+    print('${DateTime.now()}: static Future<TabloDatabase> getDatabase($serverID) async');
     Directory('databases').createSync();
     final databaseLocal = sqlite3.open('databases/$serverID.cache');
     final databaseMemory = sqlite3.openInMemory();
@@ -42,6 +45,7 @@ class TabloDatabase{
   }
 
   _init() {
+    print('${DateTime.now()}: _init()');
     final newDB = sqlite3.openInMemory();
     _backup(newDB, db);
     newDB.dispose();
@@ -55,6 +59,7 @@ class TabloDatabase{
   }
 
   _createSystemInfoTable() {
+    print('${DateTime.now()}: _createSystemInfoTable()');
     db.execute('PRAGMA foreign_keys = ON;');
     db.execute('''
       CREATE TABLE systemInfo (
@@ -71,6 +76,7 @@ class TabloDatabase{
   }
 
   _createGuideTables() {
+    print('${DateTime.now()}: _createGuideTables()');
     db.execute('''
       CREATE TABLE channelType (
         channelTypeID INTEGER PRIMARY KEY,
@@ -149,7 +155,7 @@ class TabloDatabase{
         showTypeID      INT NOT NULL,
         title           TEXT NOT NULL,
         descript        TEXT,
-        releaseDate     INT NOT NULL,
+        releaseDate     INT,
         origRunTime     INT,
         ratingID        INT,
         stars           INT,
@@ -166,9 +172,9 @@ class TabloDatabase{
         won             INT NOT NULL,
         awardNameID     INT NOT NULL,
         awardCategoryID INT NOT NULL,
-        year            INT NOT NULL,
+        awardYear       INT NOT NULL,
         castID          INT,
-        PRIMARY KEY (showID, awardNameID, awardCategoryID, year, castID),
+        PRIMARY KEY (showID, awardNameID, awardCategoryID, awardYear, castID),
         FOREIGN KEY (showID) REFERENCES show(showID),
         FOREIGN KEY (awardNameID) REFERENCES awardName(awardNameID),
         FOREIGN KEY (awardCategoryID) REFERENCES awardCategory(awardCategoryID),
@@ -203,68 +209,86 @@ class TabloDatabase{
       );
     ''');
     db.execute('''
-      CREATE TABLE airing (
-        airingID      INT NOT NULL PRIMARY KEY,
-        showID        INT,
-        datetime      INT,
-        duration      INT,
-        channelID     INT,
-        scheduledID   INT,
-        episodeID     INT
-      );
-    ''');
-    db.execute('''
       CREATE TABLE scheduled (
-        scheduledID   INT NOT NULL PRIMARY KEY,
-        scheduled     TEXT
-      );
-    ''');
-    db.execute('''
-      CREATE TABLE episode (
-        episodeID     INT NOT NULL PRIMARY KEY,
-        title         TEXT,
-        descript      TEXT,
-        episode       INT,
-        season        INT,
-        seasonTypeID  INT,
-        airDate       INT,
-        venueID       INT,
-        homeTeamID    INT
-      );
-    ''');
-    db.execute('''
-      CREATE TABLE season (
-        seasonID      INT NOT NULL PRIMARY KEY,
-        season        TEXT NOT NULL
+        scheduledID   INTEGER PRIMARY KEY,
+        scheduled     TEXT NOT NULL
       );
     ''');
     db.execute('''
       CREATE TABLE seasonType (
-        seasonTypeID  INT NOT NULL PRIMARY KEY,
+        seasonTypeID  INTEGER PRIMARY KEY,
         seasonType    TEXT NOT NULL
       );
     ''');
     db.execute('''
       CREATE TABLE venue (
-        venueID       INT NOT NULL PRIMARY KEY,
+        venueID       INTEGER PRIMARY KEY,
         venue         TEXT NOT NULL
       );
     ''');
     db.execute('''
       CREATE TABLE team (
         teamID        INT NOT NULL PRIMARY KEY,
-        name          TEXT NOT NULL
+        team          TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE season (
+        seasonID      INTEGER PRIMARY KEY,
+        season        TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      INSERT INTO  season (seasonID, season) VALUES (1000, '1000');
+    ''');
+    db.execute('''
+      CREATE TABLE episode (
+        episodeID       TEXT NOT NULL PRIMARY KEY,
+        showID          INT NOT NULL,
+        title           TEXT,
+        descript        TEXT,
+        episode         INT,
+        seasonID        INT,
+        seasonTypeID    INT,
+        originalAirDate INT,
+        venueID         INT,
+        homeTeamID      INT,
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (seasonID) REFERENCES season(seasonID),
+        FOREIGN KEY (seasonTypeID) REFERENCES seasonType(seasonTypeID),
+        FOREIGN KEY (venueID) REFERENCES venue(venueID),
+        FOREIGN KEY (homeTeamID) REFERENCES team(teamID)
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE airing (
+        airingID      INT NOT NULL PRIMARY KEY,
+        showID        INT NOT NULL,
+        airDate       INT NOT NULL,
+        duration      INT NOT NULL,
+        channelID     INT NOT NULL,
+        channelTypeID INT NOT NULL,
+        scheduledID   INT NOT NULL,
+        episodeID     TEXT,
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        FOREIGN KEY (scheduledID) REFERENCES scheduled(scheduledID),
+        FOREIGN KEY (episodeID) REFERENCES episode(episodeID)
       );
     ''');
     db.execute('''
       CREATE TABLE episodeTeam (
-        episodeID     INT NOT NULL,
-        teamID        INT NOT NULL
+        episodeID     TEXT NOT NULL,
+        teamID        INT NOT NULL,
+        PRIMARY KEY (episodeID, teamID),
+        FOREIGN KEY (episodeID) REFERENCES episode(episodeID),
+        FOREIGN KEY (teamID) REFERENCES team(teamID)
       );
     ''');
   }
 
   _createRecordingTables() {
+    print('${DateTime.now()}: _createRecordingTables()');
     db.execute('''
       CREATE TABLE recordingShow (
         recordingShowID   INT NOT NULL PRIMARY KEY,
@@ -300,6 +324,7 @@ class TabloDatabase{
   }
 
   _createErrorTable() {
+    print('${DateTime.now()}: _createErrorTable()');
     db.execute('''
       CREATE TABLE error (
         errorID           INT NOT NULL PRIMARY KEY,
@@ -320,6 +345,7 @@ class TabloDatabase{
   }
 
   _createSettingsTables() {
+    print('${DateTime.now()}: _createSettingsTables()');
     // TODO: Figure out what goes here and what the defaults are.
     db.execute('''
       CREATE TABLE settings (
@@ -334,6 +360,7 @@ class TabloDatabase{
   }
   
   updateSystemInfoTable(Map<String, dynamic> sysInfo) {
+    print('${DateTime.now()}: updateSystemInfoTable($sysInfo)');
     sysInfo = _sanitizeMap(sysInfo);
     db.execute('''
       INSERT INTO systemInfo (
@@ -364,6 +391,7 @@ class TabloDatabase{
   }
 
   updateChannels(List<Map<String, dynamic>> channels) {
+    print('${DateTime.now()}: updateChannels($channels)');
     Map<String, Map> lookup = {'channelType': _getLookup('channelType')};
     lookup = _updateLookups(channels, lookup);
     channels = _addLookupIDs(channels, lookup);
@@ -395,6 +423,7 @@ class TabloDatabase{
   }
   
   updateGuideShows(List<Map<String, dynamic>> guideShows) {
+    print('${DateTime.now()}: updateGuideShows($guideShows)');
     var lookup = <String, Map>{};
 
     lookup['rule'] = _getLookup('rule');
@@ -408,7 +437,7 @@ class TabloDatabase{
     lookup['channelType'] = _getLookup('channelType');
 
     lookup = _updateLookups(guideShows, lookup);
-    guideShows = _addLookupIDs(guideShows, lookup, channelType: 'guide');
+    guideShows = _addLookupIDs(guideShows, lookup);
     final guideShowsClean = _sanitizeList(guideShows);
     for (final show in guideShowsClean) {
       db.execute('''
@@ -437,7 +466,7 @@ class TabloDatabase{
           ${show['showTypeID']},
           ${show['title']},
           ${show['descript']},
-          ${_convertDateTimeToInt(show['releaseDate'], show['showType'], 'show')},
+          ${_convertDateTimeToInt(show['releaseDate'])},
           ${show['origRunTime']},
           ${show['ratingID']},
           ${show['stars']}
@@ -449,7 +478,7 @@ class TabloDatabase{
           showTypeID = ${show['showTypeID']},
           title = ${show['title']},
           descript = ${show['descript']},
-          releaseDate = ${_convertDateTimeToInt(show['releaseDate'], show['showType'], 'show')},
+          releaseDate = ${_convertDateTimeToInt(show['releaseDate'])},
           origRunTime = ${show['origRunTime']},
           ratingID = ${show['ratingID']},
           stars = ${show['stars']};
@@ -483,7 +512,7 @@ class TabloDatabase{
               won,
               awardNameID,
               awardCategoryID,
-              year,
+              awardYear,
               castID
             )
             VALUES (
@@ -491,7 +520,7 @@ class TabloDatabase{
               ${award['won'] ? 1 : 0},
               ${award['awardNameID']},
               ${award['awardCategoryID']},
-              ${award['year']},
+              ${award['awardYear']},
               ${award['castID']}
             ) ON CONFLICT DO NOTHING;
           ''');
@@ -499,13 +528,112 @@ class TabloDatabase{
       }
     }
   }
- 
+
+  updateGuideAirings(List<Map<String, dynamic>> guideAirings, Map<String, Map<String, dynamic>> guideEpisodes) {
+    print('${DateTime.now()}: updateGuideAirings($guideAirings, $guideEpisodes)');
+    var lookup = <String, Map>{};
+    saveToDisk();
+
+    lookup['channelType'] = _getLookup('channelType');
+    lookup['scheduled'] = _getLookup('scheduled');
+    lookup['season'] = _getLookup('season');
+    lookup['seasonType'] = _getLookup('seasonType');
+    lookup['venue'] = _getLookup('venue');
+    lookup = _updateLookups(guideAirings, lookup);
+    lookup = _updateLookups(guideEpisodes, lookup);
+    guideAirings = _addLookupIDs(guideAirings, lookup);
+    guideEpisodes = _addLookupIDs(guideEpisodes, lookup);
+    final guideAiringsClean = _sanitizeList(guideAirings);
+    final guideEpisodesClean = _sanitizeMap(guideEpisodes);
+    saveToDisk();
+    for (final episodeID in guideEpisodesClean.keys) {
+      final episode = guideEpisodesClean[episodeID];
+      db.execute('''
+        INSERT INTO episode (
+          episodeID,
+          showID,
+          title,
+          descript,
+          episode,
+          seasonID,
+          seasonTypeID,
+          originalAirDate,
+          venueID,
+          homeTeamID
+        )
+        VALUES (
+          ${_sanitizeString(episodeID)},
+          ${episode['showID']},
+          ${episode['title']},
+          ${episode['descript']},
+          ${episode['episode']},
+          ${episode['seasonID']},
+          ${episode['seasonTypeID']},
+          ${_convertDateTimeToInt(episode['originalAirDate'])},
+          ${episode['venueID']},
+          ${episode['homeTeamID']}
+        ) ON CONFLICT DO UPDATE SET
+          title = ${episode['title']},
+          descript = ${episode['descript']},
+          seasonTypeID = ${episode['seasonTypeID']},
+          originalAirDate = ${_convertDateTimeToInt(episode['originalAirDate'])},
+          venueID = ${episode['venueID']},
+          homeTeamID = ${episode['homeTeamID']};
+      ''');
+      if (episode['team'] != null && episode['team'].length > 0) {
+        for (final team in episode['team']) {
+          db.execute('''
+            INSERT INTO episodeTeam (episodeID, teamID) VALUES (${_sanitizeString(episodeID)}, ${team['teamID']}) ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
+    }
+    saveToDisk();
+    for (final airing in guideAiringsClean) {
+      final row = db.select('SELECT * FROM scheduled WHERE scheduledID = ${airing['scheduledID']}');
+      if (row.length > 0) print(row.first);
+      db.execute('''
+        INSERT INTO airing (
+          airingID,
+          showID,
+          airDate,
+          duration,
+          channelID,
+          channelTypeID,
+          scheduledID,
+          episodeID
+        )
+        VALUES (
+          ${airing['airingID']},
+          ${airing['showID']},
+          ${_convertDateTimeToInt(airing['airDate'])},
+          ${airing['duration']},
+          ${airing['channelID']},
+          ${airing['channelTypeID']},
+          ${airing['scheduledID']},
+          ${airing['episodeID']}
+        ) ON CONFLICT DO UPDATE SET
+          showID = ${airing['showID']},
+          airDate = ${_convertDateTimeToInt(airing['airDate'])},
+          duration = ${airing['duration']},
+          channelID = ${airing['channelID']},
+          channelTypeID = ${airing['channelTypeID']},
+          scheduledID = ${airing['scheduledID']},
+          episodeID = ${airing['episodeID']};
+      ''');
+      saveToDisk();
+
+    }
+  }
+  
   String _sanitizeString(String value) {
+    print('${DateTime.now()}: String _sanitizeString($value)');
     var cleanValue = value.replaceAll("'", "''");
     return cleanValue == 'null' ? cleanValue : "'$cleanValue'";
   }
   
   Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
+    print('${DateTime.now()}: Map<String, dynamic> _sanitizeMap($map)');
     final cleanMap = <String, dynamic>{};
     for (final key in map.keys) {
       if (map[key] is String) {
@@ -522,6 +650,7 @@ class TabloDatabase{
   }
   
   List<dynamic> _sanitizeList(List<dynamic> list) {
+    print('${DateTime.now()}: List<dynamic> _sanitizeList($list)');
     final cleanList = <dynamic>[];
     for (final item in list) {
       if (item is String) {
@@ -538,17 +667,28 @@ class TabloDatabase{
   }
 
   saveToDisk() {
+    print('${DateTime.now()}: saveToDisk()');
     final writedb = sqlite3.open('databases/$serverID.cache');
     _backup(db, writedb);
     writedb.dispose();
   }
   
-  Map<String, Map> _updateLookups(List<Map<String, dynamic>> items, Map<String, Map> lookup) {
+  Map<String, Map> _updateLookups(dynamic items, Map<String, Map> lookup) {
+    print('${DateTime.now()}: Map<String, Map> _updateLookups($items, $lookup)');
     final uniqueInput = <String, Set>{};
     for (final table in lookup.keys) {
       uniqueInput[table] = <String>{};
     }
-    for (final item in items) {
+    final keys = <dynamic>[];
+    if (items is List) {
+      keys.addAll(List<int>.generate(items.length, (int i) => i));
+    } else if (items is Map) {
+      keys.addAll(items.keys);
+    } else {
+      throw FormatException("_updateLookups: items must be List or Map. Input type: ${items.runtimeType}");
+    }
+    for (final key in keys) {
+      final item = items[key];
       for (final table in lookup.keys) {
         if (item[table] is List) {
           for (final subItem in item[table]) {
@@ -559,7 +699,7 @@ class TabloDatabase{
               uniqueInput[table]!.add(subItem);
             }
           }
-        } else if (item[table] != null) {
+        } else if (item[table] != null && item[table] != "null") {
           uniqueInput[table]!.add(item[table]);
         }
       }
@@ -572,15 +712,43 @@ class TabloDatabase{
           }
         }
       }
+      if (item['team'] != null && item['team'].length > 0) {
+        for (final subItem in item['team']) {
+          db.execute('''
+            INSERT INTO team (teamID, team)
+            VALUES (${subItem['teamID']}, ${_sanitizeString(subItem['team'])})
+            ON CONFLICT DO NOTHING;
+          ''');
+        }
+      }
     }
     for (final table in lookup.keys) {
       for (final item in uniqueInput[table]!) {
-        if (!lookup[table]!.containsValue(item)) {
+        if (!lookup[table]!.containsKey(item)) {
           final itemClean = _sanitizeString(item);
-          db.execute('''
-            INSERT INTO $table ($table)
-            VALUES ($itemClean);
-          ''');
+          if (table == 'season') {
+            try {
+              final season = int.parse(item);
+              if (season < 1000) {
+                db.execute('''
+                  INSERT INTO season (seasonID, season) VALUES ($item, $itemClean);
+                ''');
+              } else {
+                db.execute('''
+                  INSERT INTO season (season) VALUES ($itemClean);
+                ''');
+              }
+            } on Exception {
+              db.execute('''
+                INSERT INTO season (season) VALUES ($itemClean);
+              ''');
+            }
+          } else {
+            db.execute('''
+              INSERT INTO $table ($table)
+              VALUES ($itemClean);
+            ''');
+          }
           final itemID = db.select('''
             SELECT ${table}ID
             FROM $table as lutable
@@ -593,36 +761,42 @@ class TabloDatabase{
     return lookup;
   }
   
-  List<Map<String, dynamic>> _addLookupIDs(List<Map<String, dynamic>> items, Map<String, dynamic> lookup, {String? channelType}) {
-    for (var i = 0; i < items.length; ++i) {
-      if (items[i]['channelID'] != null && channelType != null) {
-        items[i]['channelType'] = channelType;
-      }
+  dynamic _addLookupIDs(dynamic items, Map<String, dynamic> lookup) {
+    print('${DateTime.now()}: dynamic _addLookupIDs($items, $lookup)');
+    final keys = <dynamic>[];
+    if (items is List) {
+      keys.addAll(List<int>.generate(items.length, (int i) => i));
+    } else if (items is Map) {
+      keys.addAll(items.keys);
+    } else {
+      throw FormatException("_addLookupIDs: items must be List or Map. Input type: ${items.runtimeType}");
+    }
+    for (final key in keys) {
       for (final table in lookup.keys) {
-        final lookupValue = items[i][table];
+        final lookupValue = items[key][table];
         if (lookupValue is String) {
-          items[i]['${table}ID'] = (lookup[table] as Map)[lookupValue];
+          items[key]['${table}ID'] = (lookup[table] as Map)[lookupValue];
         } else if (lookupValue is List) {
           final lookupIDs = <int>[];
           for (final val in lookupValue) {
             lookupIDs.add(lookup[table][val]);
           }
-          items[i]['${table}ID'] = lookupIDs;
-          if (table == 'cast' && items[i]['director'] != null) {
+          items[key]['${table}ID'] = lookupIDs;
+          if (table == 'cast' && items[key]['director'] != null) {
             lookupIDs.clear();
-            for (final val in items[i]['director']) {
+            for (final val in items[key]['director']) {
               lookupIDs.add(lookup[table][val]);
             }
-            items[i]['directorID'] = lookupIDs;
+            items[key]['directorID'] = lookupIDs;
           }
         }
       }
-      if (items[i]['award'] != null && items[i]['award'].length > 0) {
-        for (var j = 0; j < items[i]['award'].length; ++j) {
+      if (items[key]['award'] != null && items[key]['award'].length > 0) {
+        for (var j = 0; j < items[key]['award'].length; ++j) {
           for (final table in lookup.keys) {
-            final lookupValue = items[i]['award'][j][table];
+            final lookupValue = items[key]['award'][j][table];
             if (lookupValue != null) {
-              items[i]['award'][j]['${table}ID'] = (lookup[table] as Map)[lookupValue];
+              items[key]['award'][j]['${table}ID'] = (lookup[table] as Map)[lookupValue];
             }
           }
         }
@@ -632,6 +806,7 @@ class TabloDatabase{
   }
 
   Map<String, int> _getLookup(String table) {
+    print('${DateTime.now()}: Map<String, int> _getLookup($table)');
     final lookupTableMap = <String, int>{};
     final lookupTable = db.select('SELECT * FROM $table');
     for (final lookupRow in lookupTable) {
@@ -640,20 +815,24 @@ class TabloDatabase{
     return lookupTableMap;
   }
   
-  String _convertDateTimeToInt(dynamic date, String recordType, String table) {
+  String? _convertDateTimeToInt(dynamic date) {
+    print('${DateTime.now()}: String? _convertDateTimeToInt($date)');
     var dateTime = DateTime.fromMicrosecondsSinceEpoch(0);
     if (date is int) {
       dateTime = DateTime(date);
-    } else {
-      if (recordType == 'show') {
-        dateTime = DateTime.parse(date);
+    } else if (date is String) {
+      if (date.startsWith("'")) {
+        date = date.substring(1, date.length - 1);
       }
-      // Add additional conditions for recordings & airings as needed
+      dateTime = DateTime.parse(date);
+    } else {
+      return null;
     }
     return (dateTime.millisecondsSinceEpoch ~/ 1000).toString();
   }
 
   static String? getIP(String databasePath) {
+    print('${DateTime.now()}: static String? getIP($databasePath)');
     String? privateIP;
     try {
       final db = sqlite3.open(databasePath);
@@ -666,6 +845,7 @@ class TabloDatabase{
   }
   
   static bool _validate(Database databaseLocal, Database databaseMemory) {
+    print('${DateTime.now()}: static bool _validate($databaseLocal, $databaseMemory)');
     try {
       const sql = 'SELECT serverID FROM systemInfo;';
       ResultSet? localResults;
@@ -693,6 +873,7 @@ class TabloDatabase{
   }
   
   static _backup(Database fromDatabase, Database toDatabase) async {
+    print('${DateTime.now()}: static _backup($fromDatabase, $toDatabase) async');
     final stream = fromDatabase.backup(toDatabase);
     await stream.drain();
   }
