@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+// import 'package:flutter/material.dart';
+// import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import 'package:tablo_app/tablo.dart';
 import 'package:tablo_app/log.dart';
@@ -15,7 +15,8 @@ void main() async {
   // runApp(const MyApp());
   Tablo.redirectLog(log);
   // TODO: Delete the next several lines once the database format is finalized and no longer needs to be recreated from scratch each time
-  ('$currentLibrary: Backing up or deleting database from previous execution.');
+  logMessage(
+      '$currentLibrary: Backing up or deleting database from previous execution.');
   final database = File('databases\\$testServerID.cache');
   if (database.existsSync()) {
     logMessage('$testServerID.cache exists.');
@@ -41,15 +42,8 @@ void main() async {
   timer.stop();
   logMessage('Completed creating Tablo objects');
   logMessage('Total elapsed time: ${timer.elapsed}');
+  logMessage('Tablos located: ${tablos.length}');
   logMessage('Execution complete.');
-  // final tablo = tablos[0];
-  // final stopwatch = Stopwatch();
-  // stopwatch.start();
-  // final fullGuide = await tablo.getFullGuide();
-  // stopwatch.stop();
-  // print(fullGuide);
-  // print('type: ${fullGuide.runtimeType}');
-  // print('seconds: ${stopwatch.elapsedMilliseconds / 1000}');
 }
 
 String getTestServerID() {
@@ -69,12 +63,12 @@ String getTestServerID() {
 }
 
 void logMessage(String message, {String? level}) {
-    if (level == null) {
-      log.logMessage(currentLibrary, message);
-    } else {
-      log.logMessage(currentLibrary, message, level: level);
-    }
- }
+  if (level == null) {
+    log.logMessage(currentLibrary, message);
+  } else {
+    log.logMessage(currentLibrary, message, level: level);
+  }
+}
 /*
 
 class MyApp extends StatelessWidget {

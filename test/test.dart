@@ -23,7 +23,7 @@ void main() async {
   test('pingServer() returns true if server is accessible', () async {
     for (final tablo in tablos) {
       final accessible =
-          await Tablo.pingServer(tablo.privateIP, tablo.serverID);
+          await Tablo.isServerAvailable(tablo.privateIP, tablo.serverID);
       expect(accessible, isTrue);
     }
   });

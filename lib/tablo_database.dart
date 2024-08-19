@@ -1,15 +1,15 @@
 import 'dart:io';
+import 'dart:developer';
 
 import 'package:sqlite3/sqlite3.dart';
 import 'package:tablo_app/log.dart';
-
-const currentLibrary = 'tablo_database';
 
 class TabloDatabase {
   final Database db;
   final String serverID;
   static const _dbVer = 1;
 
+  static const _currentLibrary = 'tablo_database';
   static Log _log = Log();
 
   static void redirectLog(Log log) {
@@ -17,7 +17,6 @@ class TabloDatabase {
   }
 
   bool get isNew {
-    print('${DateTime.now()}: isNew');
     ResultSet result;
     try {
       result = db.select('SELECT serverID FROM systemInfo;');
@@ -28,8 +27,6 @@ class TabloDatabase {
   }
 
   TabloDatabase._internalConstructor(this.db, this.serverID) {
-    print(
-        '${DateTime.now()}: TabloDatabase._internalConstructor($db, $serverID)');
     try {
       final result = db.select('SELECT dbVer FROM systemInfo;');
       final dbVer = result.isNotEmpty ? result.first['dbVer'] : null;
@@ -42,8 +39,6 @@ class TabloDatabase {
   }
 
   static Future<TabloDatabase> getDatabase(String serverID) async {
-    print(
-        '${DateTime.now()}: static Future<TabloDatabase> getDatabase($serverID) async');
     Directory('databases').createSync();
     final databaseLocal = sqlite3.open('databases/$serverID.cache');
     final databaseMemory = sqlite3.openInMemory();
@@ -57,7 +52,6 @@ class TabloDatabase {
   }
 
   _init() {
-    print('${DateTime.now()}: _init()');
     final newDB = sqlite3.openInMemory();
     _backup(newDB, db);
     newDB.dispose();
@@ -70,7 +64,6 @@ class TabloDatabase {
   }
 
   _createSystemInfoTable() {
-    print('${DateTime.now()}: _createSystemInfoTable()');
     db.execute('PRAGMA foreign_keys = ON;');
     db.execute('''
       CREATE TABLE systemInfo (
@@ -87,7 +80,6 @@ class TabloDatabase {
   }
 
   _createGuideTables() {
-    print('${DateTime.now()}: _createGuideTables()');
     db.execute('''
       CREATE TABLE channelType (
         channelTypeID INTEGER PRIMARY KEY,
@@ -291,7 +283,6 @@ class TabloDatabase {
   }
 
   _createRecordingTables() {
-    print('${DateTime.now()}: _createRecordingTables()');
     db.execute('''
       CREATE TABLE recordingState (
         recordingStateID  INTEGER PRIMARY KEY,
@@ -351,7 +342,6 @@ class TabloDatabase {
   }
 
   _createSettingsTables() {
-    print('${DateTime.now()}: _createSettingsTables()');
     // TODO: Figure out what goes here and what the defaults are.
     db.execute('''
       CREATE TABLE settings (
@@ -366,7 +356,6 @@ class TabloDatabase {
   }
 
   updateSystemInfoTable(Map<String, dynamic> sysInfo) {
-    print('${DateTime.now()}: updateSystemInfoTable($sysInfo)');
     sysInfo = _sanitizeMap(sysInfo);
     db.execute('''
       INSERT INTO systemInfo (
@@ -388,7 +377,8 @@ class TabloDatabase {
         0,
         ${sysInfo['totalSize']},
         ${sysInfo['freeSize']}
-      ) ON CONFLICT DO UPDATE SET
+      )
+      ON CONFLICT DO UPDATE SET
         serverName = ${sysInfo['serverName']},
         privateIP = ${sysInfo['privateIP']},
         totalSize = ${sysInfo['totalSize']},
@@ -397,7 +387,6 @@ class TabloDatabase {
   }
 
   updateChannels(List<Map<String, dynamic>> channels) {
-    print('${DateTime.now()}: updateChannels($channels)');
     Map<String, Map> lookup = {'channelType': _getLookup('channelType')};
     lookup = _updateLookups(channels, lookup);
     channels = _addLookupIDs(channels, lookup);
@@ -419,7 +408,8 @@ class TabloDatabase {
           ${channel['major']},
           ${channel['minor']},
           ${channel['network']}
-        ) ON CONFLICT DO UPDATE SET
+        )
+        ON CONFLICT DO UPDATE SET
           callSign = ${channel['callSign']},
           major = ${channel['major']},
           minor = ${channel['minor']},
@@ -429,7 +419,6 @@ class TabloDatabase {
   }
 
   updateGuideShows(List<Map<String, dynamic>> guideShows) {
-    print('${DateTime.now()}: updateGuideShows($guideShows)');
     var lookup = <String, Map>{};
 
     lookup['rule'] = _getLookup('rule');
@@ -476,7 +465,8 @@ class TabloDatabase {
           ${show['origRunTime']},
           ${show['ratingID']},
           ${show['stars']}
-        ) ON CONFLICT DO UPDATE SET
+        )
+        ON CONFLICT DO UPDATE SET
           ruleID = ${show['ruleID']},
           channelID = ${show['channelID']},
           keepRecordingID = ${show['keepRecordingID']},
@@ -528,7 +518,8 @@ class TabloDatabase {
               ${award['awardCategoryID']},
               ${award['awardYear']},
               ${award['castID']}
-            ) ON CONFLICT DO NOTHING;
+            )
+            ON CONFLICT DO NOTHING;
           ''');
         }
       }
@@ -536,9 +527,7 @@ class TabloDatabase {
   }
 
   updateGuideAirings(List<Map<String, dynamic>> guideAirings,
-      Map<String, Map<String, dynamic>> guideEpisodes) {
-    print(
-        '${DateTime.now()}: updateGuideAirings($guideAirings, $guideEpisodes)');
+      List<Map<String, dynamic>> guideEpisodes) {
     var lookup = <String, Map>{};
     saveToDisk();
 
@@ -551,10 +540,9 @@ class TabloDatabase {
     guideAirings = _addLookupIDs(guideAirings, lookup);
     guideEpisodes = _addLookupIDs(guideEpisodes, lookup);
     final guideAiringsClean = _sanitizeList(guideAirings);
-    final guideEpisodesClean = _sanitizeMap(guideEpisodes);
+    final guideEpisodesClean = _sanitizeList(guideEpisodes);
     saveToDisk();
-    for (final episodeID in guideEpisodesClean.keys) {
-      final episode = guideEpisodesClean[episodeID];
+    for (final episode in guideEpisodesClean) {
       db.execute('''
         INSERT INTO episode (
           episodeID,
@@ -568,7 +556,7 @@ class TabloDatabase {
           homeTeamID
         )
         VALUES (
-          ${_sanitizeString(episodeID)},
+          ${episode['episodeID']},
           ${episode['showID']},
           ${episode['title']},
           ${episode['descript']},
@@ -577,7 +565,8 @@ class TabloDatabase {
           ${episode['seasonTypeID']},
           ${_convertDateTimeToInt(episode['originalAirDate'])},
           ${episode['homeTeamID']}
-        ) ON CONFLICT DO UPDATE SET
+        )
+        ON CONFLICT DO UPDATE SET
           title = ${episode['title']},
           descript = ${episode['descript']},
           seasonTypeID = ${episode['seasonTypeID']},
@@ -587,16 +576,13 @@ class TabloDatabase {
       if (episode['team'] != null && episode['team'].length > 0) {
         for (final team in episode['team']) {
           db.execute('''
-            INSERT INTO episodeTeam (episodeID, teamID) VALUES (${_sanitizeString(episodeID)}, ${team['teamID']}) ON CONFLICT DO NOTHING;
+            INSERT INTO episodeTeam (episodeID, teamID) VALUES (${_sanitizeString(episode['episodeID'])}, ${team['teamID']}) ON CONFLICT DO NOTHING;
           ''');
         }
       }
     }
     saveToDisk();
     for (final airing in guideAiringsClean) {
-      final row = db.select(
-          'SELECT * FROM scheduled WHERE scheduledID = ${airing['scheduledID']}');
-      if (row.length > 0) print(row.first);
       db.execute('''
         INSERT INTO airing (
           airingID,
@@ -617,7 +603,8 @@ class TabloDatabase {
           ${airing['channelTypeID']},
           ${airing['scheduledID']},
           ${airing['episodeID']}
-        ) ON CONFLICT DO UPDATE SET
+        )
+        ON CONFLICT DO UPDATE SET
           showID = ${airing['showID']},
           airDate = ${_convertDateTimeToInt(airing['airDate'])},
           duration = ${airing['duration']},
@@ -631,13 +618,11 @@ class TabloDatabase {
   }
 
   String _sanitizeString(String value) {
-    print('${DateTime.now()}: String _sanitizeString($value)');
     var cleanValue = value.replaceAll("'", "''");
     return cleanValue == 'null' ? cleanValue : "'$cleanValue'";
   }
 
   Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
-    print('${DateTime.now()}: Map<String, dynamic> _sanitizeMap($map)');
     final cleanMap = <String, dynamic>{};
     for (final key in map.keys) {
       if (map[key] is String) {
@@ -654,7 +639,6 @@ class TabloDatabase {
   }
 
   List<dynamic> _sanitizeList(List<dynamic> list) {
-    print('${DateTime.now()}: List<dynamic> _sanitizeList($list)');
     final cleanList = <dynamic>[];
     for (final item in list) {
       if (item is String) {
@@ -671,15 +655,12 @@ class TabloDatabase {
   }
 
   saveToDisk() {
-    print('${DateTime.now()}: saveToDisk()');
     final writedb = sqlite3.open('databases/$serverID.cache');
     _backup(db, writedb);
     writedb.dispose();
   }
 
   Map<String, Map> _updateLookups(dynamic items, Map<String, Map> lookup) {
-    print(
-        '${DateTime.now()}: Map<String, Map> _updateLookups($items, $lookup)');
     final uniqueInput = <String, Set>{};
     for (final table in lookup.keys) {
       uniqueInput[table] = <String>{};
@@ -768,7 +749,6 @@ class TabloDatabase {
   }
 
   dynamic _addLookupIDs(dynamic items, Map<String, dynamic> lookup) {
-    print('${DateTime.now()}: dynamic _addLookupIDs($items, $lookup)');
     final keys = <dynamic>[];
     if (items is List) {
       keys.addAll(List<int>.generate(items.length, (int i) => i));
@@ -814,7 +794,6 @@ class TabloDatabase {
   }
 
   Map<String, int> _getLookup(String table) {
-    print('${DateTime.now()}: Map<String, int> _getLookup($table)');
     final lookupTableMap = <String, int>{};
     final lookupTable = db.select('SELECT * FROM $table');
     for (final lookupRow in lookupTable) {
@@ -824,7 +803,6 @@ class TabloDatabase {
   }
 
   String? _convertDateTimeToInt(dynamic date) {
-    print('${DateTime.now()}: String? _convertDateTimeToInt($date)');
     var dateTime = DateTime.fromMicrosecondsSinceEpoch(0);
     if (date is int) {
       dateTime = DateTime(date);
@@ -840,7 +818,6 @@ class TabloDatabase {
   }
 
   static String? getIP(String databasePath) {
-    print('${DateTime.now()}: static String? getIP($databasePath)');
     String? privateIP;
     try {
       final db = sqlite3.open(databasePath);
@@ -853,8 +830,6 @@ class TabloDatabase {
   }
 
   static bool _validate(Database databaseLocal, Database databaseMemory) {
-    print(
-        '${DateTime.now()}: static bool _validate($databaseLocal, $databaseMemory)');
     try {
       const sql = 'SELECT serverID FROM systemInfo;';
       ResultSet? localResults;
@@ -883,9 +858,15 @@ class TabloDatabase {
   }
 
   static _backup(Database fromDatabase, Database toDatabase) async {
-    print(
-        '${DateTime.now()}: static _backup($fromDatabase, $toDatabase) async');
     final stream = fromDatabase.backup(toDatabase);
     await stream.drain();
+  }
+
+  static void _logMessage(String message, {String? level}) {
+    if (level == null) {
+      _log.logMessage(_currentLibrary, message);
+    } else {
+      _log.logMessage(_currentLibrary, message, level: level);
+    }
   }
 }

@@ -13,20 +13,28 @@ class Log {
     'finer': Level.FINER,
     'finest': Level.FINEST,
     'all': Level.ALL
-    };
-
+  };
 
   Log({String logname = 'log'}) : log = Logger(logname) {
     log.onRecord.listen((record) {
       // TODO: Update this to log somewhere useful or switch to Flutter debugprint
-      print('"${DateTime.now()}", "${record.level}", "${(record.object as Map)['library']}", "${(record.object as Map)['message']}"');});
+      print(
+          '"${DateTime.now()}", "${record.level}", "${(record.object as Map)['library']}", "${(record.object as Map)['message']}"');
+    });
   }
 
-  void logMessage(String message, String library, {String level='info'}) {
+  void logMessage(String message, String library, {String level = 'info'}) {
     if (_levels.containsKey(level)) {
-      log.log(_levels[level]!, {'library': _sanitizeString(library), 'message': _sanitizeString(message)});
+      log.log(_levels[level]!, {
+        'library': _sanitizeString(library),
+        'message': _sanitizeString(message)
+      });
     } else {
-      log.log(Level.SEVERE, {'library': _sanitizeString(library), 'message': 'Invalid level ($level) submitted! Original message:  ${_sanitizeString(message)}'});
+      log.log(Level.SEVERE, {
+        'library': _sanitizeString(library),
+        'message':
+            'Invalid level ($level) submitted! Original message: ${_sanitizeString(message)}'
+      });
     }
   }
 
