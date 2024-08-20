@@ -81,21 +81,12 @@ class TabloDatabase {
 
   _createGuideTables() {
     db.execute('''
-      CREATE TABLE channelType (
-        channelTypeID INTEGER PRIMARY KEY,
-        channelType   TEXT UNIQUE NOT NULL
-      );
-    ''');
-    db.execute('''
       CREATE TABLE channel (
-        channelID     INT NOT NULL,
-        channelTypeID INT NOT NULL,
+        channelID     INT NOT NULL PRIMARY KEY,
         callSign      TEXT NOT NULL,
         major         INT NOT NULL,
         minor         INT NOT NULL,
-        network       TEXT,
-        PRIMARY KEY (channelID, channelTypeID),
-        FOREIGN KEY (channelTypeID) REFERENCES channelType(channelTypeID)
+        network       TEXT
       );
     ''');
     db.execute('''
@@ -150,9 +141,9 @@ class TabloDatabase {
     db.execute('''
       CREATE TABLE show (
         showID          INT NOT NULL PRIMARY KEY,
+        parentShowID    INT,
         ruleID          INT,
         channelID       INT,
-        channelTypeID   INT,
         keepRecordingID INT NOT NULL,
         count           INT,
         showTypeID      INT NOT NULL,
@@ -162,8 +153,9 @@ class TabloDatabase {
         origRunTime     INT,
         ratingID        INT,
         stars           INT,
+        FOREIGN KEY (parentShowID) REFERENCES show(showID),
         FOREIGN KEY (ruleID) REFERENCES rule(ruleID),
-        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        FOREIGN KEY (channelID) REFERENCES channel(channelID),
         FOREIGN KEY (keepRecordingID) REFERENCES keepRecording(keepRecordingID),
         FOREIGN KEY (showTypeID) REFERENCES showType(showTypeID),
         FOREIGN KEY (ratingID) REFERENCES rating(ratingID)
@@ -262,11 +254,10 @@ class TabloDatabase {
         airDate       INT NOT NULL,
         duration      INT NOT NULL,
         channelID     INT NOT NULL,
-        channelTypeID INT NOT NULL,
         scheduledID   INT NOT NULL,
         episodeID     TEXT,
         FOREIGN KEY (showID) REFERENCES show(showID),
-        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        FOREIGN KEY (channelID) REFERENCES channel(channelID),
         FOREIGN KEY (scheduledID) REFERENCES scheduled(scheduledID),
         FOREIGN KEY (episodeID) REFERENCES episode(episodeID)
       );
@@ -296,30 +287,35 @@ class TabloDatabase {
       );
     ''');
     db.execute('''
-      CREATE TABLE recordingShow (
-        recordingShowID INT NOT NULL PRIMARY KEY,
-        showID INT NOT NULL,
-        FOREIGN KEY (showID) REFERENCES show(showID)
-      );
-    ''');
-    db.execute('''
       CREATE TABLE recording (
         recordingID       INT NOT NULL PRIMARY KEY,
-        recordingShowID   INT NOT NULL,
+        showID            INT NOT NULL,
         airDate           INT NOT NULL,
         airingDuration    INT NOT NULL,
         channelID         INT NOT NULL,
-        channelTypeID     INT NOT NULL,
         recordingStateID  INT NOT NULL,
         clean             INT NOT NULL,
         recordingDuration INT NOT NULL,
+        recordingSize     INT NOT NULL,
         comSkipStateID    INT NOT NULL,
-        episodeID         INT NOT NULL,
-        FOREIGN KEY (recordingShowID) REFERENCES recordingShow(recordingShowID),
-        FOREIGN KEY (channelID, channelTypeID) REFERENCES channel(channelID, channelTypeID),
+        episodeID         INT,
+        FOREIGN KEY (showID) REFERENCES show(showID),
+        FOREIGN KEY (channelID) REFERENCES channel(channelID),
         FOREIGN KEY (recordingStateID) REFERENCES recordingState(recordingStateID),
         FOREIGN KEY (comSkipStateID) REFERENCES comSkipState(comSkipStateID),
         FOREIGN KEY (episodeID) REFERENCES episode(episodeID)
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE errorCode (
+        errorCodeID INTEGER PRIMARY KEY,
+        errorCode   TEXT NOT NULL
+      );
+    ''');
+    db.execute('''
+      CREATE TABLE errorDetails (
+        errorDetailsID  INTEGER PRIMARY KEY,
+        errorDetails    TEXT NOT NULL
       );
     ''');
     db.execute('''
@@ -327,16 +323,22 @@ class TabloDatabase {
         errorID           INTEGER PRIMARY KEY,
         recordingID       INT NOT NULL,
         recordingShowID   INT NOT NULL,
-        showID            INT NOT NULL,
-        episodeID         INT NOT NULL,
+        showID            INT,
+        episodeID         INT,
         channelID         INT NOT NULL,
         airDate           INT NOT NULL,
-        duration          INT NOT NULL,
+        airingDuration    INT NOT NULL,
+        recordingDuration INT NOT NULL,
+        recordingSize     INT NOT NULL,
+        recordingStateID  INT NOT NULL,
+        clean             INT NOT NULL,
         comSkipStateID    INT NOT NULL,
-        comSkipError      TEXT NOT NULL,
-        errorCode         TEXT NOT NULL,
-        errorDetails      TEXT NOT NULL,
-        errorDesc         TEXT NOT NULL
+        comSkipError      TEXT,
+        errorCodeID       INT,
+        errorDetailsID    INT,
+        errorDescription  TEXT,
+        FOREIGN KEY (errorCodeID) REFERENCES errorCode(errorCodeID),
+        FOREIGN KEY (errorDetailsID) REFERENCES errorDetails(errorDetailsID)
       );
     ''');
   }
@@ -387,15 +389,11 @@ class TabloDatabase {
   }
 
   updateChannels(List<Map<String, dynamic>> channels) {
-    Map<String, Map> lookup = {'channelType': _getLookup('channelType')};
-    lookup = _updateLookups(channels, lookup);
-    channels = _addLookupIDs(channels, lookup);
     final channelsClean = _sanitizeList(channels);
     for (final channel in channelsClean) {
       db.execute('''
         INSERT INTO channel(
           channelID,
-          channelTypeID,
           callSign,
           major,
           minor,
@@ -403,7 +401,6 @@ class TabloDatabase {
         )
         VALUES (
           ${channel['channelID']},
-          ${channel['channelTypeID']},
           ${channel['callSign']},
           ${channel['major']},
           ${channel['minor']},
@@ -429,99 +426,112 @@ class TabloDatabase {
     lookup['cast'] = _getLookup('cast');
     lookup['awardName'] = _getLookup('awardName');
     lookup['awardCategory'] = _getLookup('awardCategory');
-    lookup['channelType'] = _getLookup('channelType');
+    lookup['showType'] = _getLookup('showType');
 
     lookup = _updateLookups(guideShows, lookup);
     guideShows = _addLookupIDs(guideShows, lookup);
     final guideShowsClean = _sanitizeList(guideShows);
     for (final show in guideShowsClean) {
-      db.execute('''
-        INSERT INTO show (
-          showID,
-          ruleID,
-          channelID,
-          channelTypeID,
-          keepRecordingID,
-          count,
-          showTypeID,
-          title,
-          descript,
-          releaseDate,
-          origRunTime,
-          ratingID,
-          stars
-        )
-        VALUES (
-          ${show['showID']},
-          ${show['ruleID']},
-          ${show['channelID']},
-          ${show['channelTypeID']},
-          ${show['keepRecordingID']},
-          ${show['count']},
-          ${show['showTypeID']},
-          ${show['title']},
-          ${show['descript']},
-          ${_convertDateTimeToInt(show['releaseDate'])},
-          ${show['origRunTime']},
-          ${show['ratingID']},
-          ${show['stars']}
-        )
-        ON CONFLICT DO UPDATE SET
-          ruleID = ${show['ruleID']},
-          channelID = ${show['channelID']},
-          keepRecordingID = ${show['keepRecordingID']},
-          count = ${show['count']},
-          showTypeID = ${show['showTypeID']},
-          title = ${show['title']},
-          descript = ${show['descript']},
-          releaseDate = ${_convertDateTimeToInt(show['releaseDate'])},
-          origRunTime = ${show['origRunTime']},
-          ratingID = ${show['ratingID']},
-          stars = ${show['stars']};
-      ''');
-      if (show['cast'] != null && show['cast'].length > 0) {
-        for (final castID in show['castID']) {
-          db.execute('''
-            INSERT INTO showCast (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
-          ''');
-        }
+      _updateShow(show);
+    }
+  }
+
+  void _updateShow(show) {
+    db.execute('''
+      INSERT INTO show (
+        showID,
+        parentShowID,
+        ruleID,
+        channelID,
+        keepRecordingID,
+        count,
+        showTypeID,
+        title,
+        descript,
+        releaseDate,
+        origRunTime,
+        ratingID,
+        stars
+      )
+      VALUES (
+        ${show['showID']},
+        ${show['parentShowID']},
+        ${show['ruleID']},
+        ${show['channelID']},
+        ${show['keepRecordingID']},
+        ${show['count']},
+        ${show['showTypeID']},
+        ${show['title']},
+        ${show['descript']},
+        ${_convertDateTimeToInt(show['releaseDate'])},
+        ${show['origRunTime']},
+        ${show['ratingID']},
+        ${show['stars']}
+      )
+      ON CONFLICT DO UPDATE SET
+        parentShowID = ${show['parentShowID']},
+        ruleID = ${show['ruleID']},
+        channelID = ${show['channelID']},
+        keepRecordingID = ${show['keepRecordingID']},
+        count = ${show['count']},
+        showTypeID = ${show['showTypeID']},
+        title = ${show['title']},
+        descript = ${show['descript']},
+        releaseDate = ${_convertDateTimeToInt(show['releaseDate'])},
+        origRunTime = ${show['origRunTime']},
+        ratingID = ${show['ratingID']},
+        stars = ${show['stars']};
+    ''');
+    if (show['cast'] != null &&
+        show['cast'].length > 0 &&
+        show['parentShowID'] == null) {
+      for (final castID in show['castID']) {
+        db.execute('''
+          INSERT INTO showCast (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
+        ''');
       }
-      if (show['genre'] != null && show['genre'].length > 0) {
-        for (final genreID in show['genreID']) {
-          db.execute('''
-            INSERT INTO showGenre (showID, genreID) VALUES (${show['showID']}, $genreID) ON CONFLICT DO NOTHING;
-          ''');
-        }
+    }
+    if (show['genre'] != null &&
+        show['genre'].length > 0 &&
+        show['parentShowID'] == null) {
+      for (final genreID in show['genreID']) {
+        db.execute('''
+          INSERT INTO showGenre (showID, genreID) VALUES (${show['showID']}, $genreID) ON CONFLICT DO NOTHING;
+        ''');
       }
-      if (show['director'] != null && show['director'].length > 0) {
-        for (final castID in show['directorID']) {
-          db.execute('''
-            INSERT INTO showDirector (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
-          ''');
-        }
+    }
+    if (show['director'] != null &&
+        show['director'].length > 0 &&
+        show['parentShowID'] == null) {
+      for (final castID in show['directorID']) {
+        db.execute('''
+          INSERT INTO showDirector (showID, castID) VALUES (${show['showID']}, $castID) ON CONFLICT DO NOTHING;
+        ''');
       }
-      if (show['award'] != null && show['award'].length > 0) {
-        for (final award in show['award']) {
-          db.execute('''
-            INSERT INTO showAward (
-              showID,
-              won,
-              awardNameID,
-              awardCategoryID,
-              awardYear,
-              castID
-            )
-            VALUES (
-              ${show['showID']},
-              ${award['won'] ? 1 : 0},
-              ${award['awardNameID']},
-              ${award['awardCategoryID']},
-              ${award['awardYear']},
-              ${award['castID']}
-            )
-            ON CONFLICT DO NOTHING;
-          ''');
-        }
+    }
+    if (show['award'] != null &&
+        show['award'].length > 0 &&
+        show['parentShowID'] == null) {
+      for (final award in show['award']) {
+        db.execute('''
+          INSERT INTO showAward (
+            showID,
+            won,
+            awardNameID,
+            awardCategoryID,
+            awardYear,
+            castID
+          )
+          VALUES (
+            ${show['showID']},
+            ${award['won'] ? 1 : 0},
+            ${award['awardNameID']},
+            ${award['awardCategoryID']},
+            ${award['awardYear']},
+            ${award['castID']}
+          )
+          ON CONFLICT DO NOTHING;
+        ''');
       }
     }
   }
@@ -529,9 +539,7 @@ class TabloDatabase {
   updateGuideAirings(List<Map<String, dynamic>> guideAirings,
       List<Map<String, dynamic>> guideEpisodes) {
     var lookup = <String, Map>{};
-    saveToDisk();
 
-    lookup['channelType'] = _getLookup('channelType');
     lookup['scheduled'] = _getLookup('scheduled');
     lookup['season'] = _getLookup('season');
     lookup['seasonType'] = _getLookup('seasonType');
@@ -541,47 +549,9 @@ class TabloDatabase {
     guideEpisodes = _addLookupIDs(guideEpisodes, lookup);
     final guideAiringsClean = _sanitizeList(guideAirings);
     final guideEpisodesClean = _sanitizeList(guideEpisodes);
-    saveToDisk();
     for (final episode in guideEpisodesClean) {
-      db.execute('''
-        INSERT INTO episode (
-          episodeID,
-          showID,
-          title,
-          descript,
-          episode,
-          seasonID,
-          seasonTypeID,
-          originalAirDate,
-          homeTeamID
-        )
-        VALUES (
-          ${episode['episodeID']},
-          ${episode['showID']},
-          ${episode['title']},
-          ${episode['descript']},
-          ${episode['episode']},
-          ${episode['seasonID']},
-          ${episode['seasonTypeID']},
-          ${_convertDateTimeToInt(episode['originalAirDate'])},
-          ${episode['homeTeamID']}
-        )
-        ON CONFLICT DO UPDATE SET
-          title = ${episode['title']},
-          descript = ${episode['descript']},
-          seasonTypeID = ${episode['seasonTypeID']},
-          originalAirDate = ${_convertDateTimeToInt(episode['originalAirDate'])},
-          homeTeamID = ${episode['homeTeamID']};
-      ''');
-      if (episode['team'] != null && episode['team'].length > 0) {
-        for (final team in episode['team']) {
-          db.execute('''
-            INSERT INTO episodeTeam (episodeID, teamID) VALUES (${_sanitizeString(episode['episodeID'])}, ${team['teamID']}) ON CONFLICT DO NOTHING;
-          ''');
-        }
-      }
+      _updateEpisode(episode);
     }
-    saveToDisk();
     for (final airing in guideAiringsClean) {
       db.execute('''
         INSERT INTO airing (
@@ -590,7 +560,6 @@ class TabloDatabase {
           airDate,
           duration,
           channelID,
-          channelTypeID,
           scheduledID,
           episodeID
         )
@@ -600,7 +569,6 @@ class TabloDatabase {
           ${_convertDateTimeToInt(airing['airDate'])},
           ${airing['duration']},
           ${airing['channelID']},
-          ${airing['channelTypeID']},
           ${airing['scheduledID']},
           ${airing['episodeID']}
         )
@@ -609,11 +577,9 @@ class TabloDatabase {
           airDate = ${_convertDateTimeToInt(airing['airDate'])},
           duration = ${airing['duration']},
           channelID = ${airing['channelID']},
-          channelTypeID = ${airing['channelTypeID']},
           scheduledID = ${airing['scheduledID']},
           episodeID = ${airing['episodeID']};
       ''');
-      saveToDisk();
     }
   }
 
@@ -867,6 +833,185 @@ class TabloDatabase {
       _log.logMessage(_currentLibrary, message);
     } else {
       _log.logMessage(_currentLibrary, message, level: level);
+    }
+  }
+
+  void updateRecordings(
+      List<Map<String, dynamic>> recordingShows,
+      List<Map<String, dynamic>> recordings,
+      List<Map<String, dynamic>> recordingEpisodes,
+      List<Map<String, dynamic>> recordingErrors) {
+    _logMessage('Beginning updateRecordings.');
+    var lookup = <String, Map>{};
+
+    _logMessage('Getting lookup tables.');
+    lookup['recordingState'] = _getLookup('recordingState');
+    lookup['comSkipState'] = _getLookup('comSkipState');
+    lookup['errorCode'] = _getLookup('errorCode');
+    lookup['errorDetails'] = _getLookup('errorDetails');
+    lookup['season'] = _getLookup('season');
+    lookup['seasonType'] = _getLookup('seasonType');
+    lookup['keepRecording'] = _getLookup('keepRecording');
+    lookup['showType'] = _getLookup('showType');
+    lookup['cast'] = _getLookup('cast');
+    lookup['awardName'] = _getLookup('awardName');
+    lookup['rating'] = _getLookup('rating');
+    lookup['awardCategory'] = _getLookup('awardCategory');
+    lookup['genre'] = _getLookup('genre');
+
+    _logMessage('Updating lookup tables with new values.');
+    lookup = _updateLookups(recordings, lookup);
+    lookup = _updateLookups(recordingEpisodes, lookup);
+    lookup = _updateLookups(recordingErrors, lookup);
+    lookup = _updateLookups(recordingShows, lookup);
+
+    _logMessage('Adding lookup IDs to records.');
+    recordings = _addLookupIDs(recordings, lookup);
+    recordingEpisodes = _addLookupIDs(recordingEpisodes, lookup);
+    recordingErrors = _addLookupIDs(recordingErrors, lookup);
+    recordingShows = _addLookupIDs(recordingShows, lookup);
+
+    _logMessage('Sanitizing strings for SQL,');
+    final recordingsClean = _sanitizeList(recordings);
+    final recordingEpisodesClean = _sanitizeList(recordingEpisodes);
+    final recordingErrorsClean = _sanitizeList(recordingErrors);
+    final recordingShowsClean = _sanitizeList(recordingShows);
+
+    _logMessage('Beginning updating ${recordingShowsClean.length} shows.');
+    for (final show in recordingShowsClean) {
+      _updateShow(show);
+    }
+
+    _logMessage(
+        'Beginning updating ${recordingEpisodesClean.length} episodes.');
+    for (final episode in recordingEpisodesClean) {
+      _updateEpisode(episode);
+    }
+
+    _logMessage('Beginning updating ${recordingsClean.length} recordings.');
+    for (final recording in recordingsClean) {
+      db.execute('''
+        INSERT INTO recording (
+          recordingID,
+          showID,
+          airDate,
+          airingDuration,
+          channelID,
+          recordingStateID,
+          clean,
+          recordingDuration,
+          recordingSize,
+          comSkipStateID,
+          episodeID
+        )
+        VALUES (
+          ${recording['recordingID']},
+          ${recording['showID']},
+          ${_convertDateTimeToInt(recording['airDate'])},
+          ${recording['airingDuration']},
+          ${recording['channelID']},
+          ${recording['recordingStateID']},
+          ${recording['clean'] ? 1 : 0},
+          ${recording['recordingDuration']},
+          ${recording['recordingSize']},
+          ${recording['comSkipStateID']},
+          ${recording['episodeID']}
+        )
+        ON CONFLICT DO UPDATE SET
+          showID = ${recording['showID']},
+          airDate = ${_convertDateTimeToInt(recording['airDate'])},
+          airingDuration = ${recording['airingDuration']},
+          channelID = ${recording['channelID']},
+          recordingStateID = ${recording['recordingStateID']},
+          clean = ${recording['clean'] ? 1 : 0},
+          recordingDuration = ${recording['recordingDuration']},
+          recordingSize = ${recording['recordingSize']},
+          comSkipStateID = ${recording['comSkipStateID']},
+          episodeID = ${recording['episodeID']};
+      ''');
+    }
+
+    _logMessage('Beginning updating ${recordingErrorsClean.length} errors.');
+    for (final error in recordingErrorsClean) {
+      db.execute('''
+        INSERT INTO error (
+          recordingID,
+          recordingShowID,
+          showID,
+          episodeID,
+          channelID,
+          airDate,
+          airingDuration,
+          recordingDuration,
+          recordingSize,
+          recordingStateID,
+          clean,
+          comSkipStateID,
+          comSkipError,
+          errorCodeID,
+          errorDetailsID,
+          errorDescription
+        )
+        VALUES (
+          ${error['recordingID']},
+          ${error['recordingShowID']},
+          ${error['showID']},
+          ${error['episodeID']},
+          ${error['channelID']},
+          ${_convertDateTimeToInt(error['airDate'])},
+          ${error['airingDuration']},
+          ${error['recordingDuration']},
+          ${error['recordingSize']},
+          ${error['recordingStateID']},
+          ${error['clean'] ? 1 : 0},
+          ${error['comSkipStateID']},
+          ${error['comSkipError']},
+          ${error['errorCodeID']},
+          ${error['errorDetailsID']},
+          ${error['errorDescription']}
+        )
+        ON CONFLICT DO NOTHING;
+      ''');
+    }
+  }
+
+  void _updateEpisode(episode) {
+    db.execute('''
+      INSERT INTO episode (
+        episodeID,
+        showID,
+        title,
+        descript,
+        episode,
+        seasonID,
+        seasonTypeID,
+        originalAirDate,
+        homeTeamID
+      )
+      VALUES (
+        ${episode['episodeID']},
+        ${episode['showID']},
+        ${episode['title']},
+        ${episode['descript']},
+        ${episode['episode']},
+        ${episode['seasonID']},
+        ${episode['seasonTypeID']},
+        ${_convertDateTimeToInt(episode['originalAirDate'])},
+        ${episode['homeTeamID']}
+      )
+      ON CONFLICT DO UPDATE SET
+        title = ${episode['title']},
+        descript = ${episode['descript']},
+        seasonTypeID = ${episode['seasonTypeID']},
+        originalAirDate = ${_convertDateTimeToInt(episode['originalAirDate'])},
+        homeTeamID = ${episode['homeTeamID']};
+    ''');
+    if (episode['team'] != null && episode['team'].length > 0) {
+      for (final team in episode['team']) {
+        db.execute('''
+          INSERT INTO episodeTeam (episodeID, teamID) VALUES (${episode['episodeID']}, ${team['teamID']}) ON CONFLICT DO NOTHING;
+        ''');
+      }
     }
   }
 }

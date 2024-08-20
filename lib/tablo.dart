@@ -27,6 +27,7 @@ class Tablo {
 
   static Log _log = Log();
 
+  /// Redirect the logging for all Tablos to the provided log
   static void redirectLog(Log log) {
     _log = log;
     log.logMessage(_currentLibrary, 'Redirected log.');
@@ -41,6 +42,7 @@ class Tablo {
     }
   }
 
+  /// Get a List of all available Tablos
   static Future<List<Tablo>> getTablos() async {
     _logMessage('Beginning getTablos.');
     final tabloIDs = await _getCaches();
@@ -76,6 +78,8 @@ class Tablo {
         await tablo.updateGuideShows();
         _logMessage('Updating scheduled airings for $tablo');
         await tablo.updateGuideAirings(scheduledOnly: true);
+        _logMessage('Updating recordings for $tablo');
+        await tablo.updateRecordings();
         _logMessage('Saving cache to disk for $tablo');
         tablo.saveCacheToDisk();
       }
@@ -146,7 +150,6 @@ class Tablo {
     for (final channel in guideChannels) {
       channels.add({
         'channelID': channel['object_id'],
-        'channelType': 'guide',
         'callSign': channel['channel']['call_sign'],
         'major': channel['channel']['major'],
         'minor': channel['channel']['minor'],
@@ -157,8 +160,7 @@ class Tablo {
     final recordingChannels = await _batch(recordingChannelsPaths);
     for (final channel in recordingChannels) {
       channels.add({
-        'channelID': channel['object_id'],
-        'channelType': 'recordings',
+        'channelID': channel['object_id'] * -1,
         'callSign': channel['channel']['call_sign'],
         'major': channel['channel']['major'],
         'minor': channel['channel']['minor'],
@@ -173,8 +175,25 @@ class Tablo {
     final guideShowsDesc = await _batch(guideShowsList);
     final guideShows = <Map<String, dynamic>>[];
     for (final show in guideShowsDesc) {
-      final showProperties = show['series'] ?? show['movie'] ?? show['sport'];
-      final awards = <Map<String, dynamic>>[];
+      guideShows.add(_createShowMap(show));
+    }
+    cache.updateGuideShows(guideShows);
+  }
+
+  Map<String, dynamic> _createShowMap(Map<String, dynamic> show,
+      {bool recording = false}) {
+    final showProperties = show['series'] ?? show['movie'] ?? show['sport'];
+    final awards = <Map<String, dynamic>>[];
+    Map<String, dynamic> showMap;
+    if (show['guide_path'] != null) {
+      showMap = {
+        'showID': -show['object_id'],
+        'parentShowID': _getIDfromPath(show['guide_path']),
+        'keepRecording': show['keep']['rule'],
+        'showType': _getShowType(show['path']),
+        'title': '',
+      };
+    } else {
       if (showProperties['awards'] != null &&
           showProperties['awards'].length > 0) {
         for (final award in showProperties['awards']) {
@@ -187,11 +206,13 @@ class Tablo {
           });
         }
       }
-      guideShows.add({
-        'showID': show['object_id'],
+      var channelID = _getIDfromPath(show['schedule']?['channel_path']);
+      if (recording && channelID != null) channelID *= -1;
+      showMap = {
+        'showID': show['object_id'] * (recording ? -1 : 1),
+        'parentShowID': _getIDfromPath(show['guide_path']),
         'rule': show['schedule']?['rule'],
-        'channelID': _getID(show['schedule']?['channel_path']),
-        'channelType': 'guide',
+        'channelID': channelID,
         'keepRecording': show['keep']['rule'],
         'count': show['keep']['count'],
         'showType': _getShowType(show['path']),
@@ -208,14 +229,15 @@ class Tablo {
         'cast': showProperties['cast'],
         'award': awards,
         'director': showProperties['directors'],
-      });
+      };
     }
-    cache.updateGuideShows(guideShows);
+    return showMap;
   }
 
   Future<void> updateGuideAirings({bool scheduledOnly = false}) async {
     _logMessage('Beginning updateGuideAirings(scheduledOnly: $scheduledOnly)');
     List<dynamic> guideAiringsList;
+    final episodesAdded = <String>{};
     if (scheduledOnly) {
       guideAiringsList = await _get('guide/airings?state=scheduled');
       guideAiringsList.addAll(await _get('guide/airings?state=conflicted'));
@@ -227,23 +249,25 @@ class Tablo {
     final guideEpisodes = <Map<String, dynamic>>[];
     for (final airing in guideAiringsDesc) {
       final showType = _getShowType(airing['path']);
-      final episodeID = _getEpisodeID(airing);
-      final showID = _getID(airing['series_path'] ??
+      final showID = _getIDfromPath(airing['series_path'] ??
           airing['sport_path'] ??
           airing['movie_path']);
+      final episodeID = _getEpisodeID(airing, showID!);
       guideAirings.add({
         'airingID': airing['object_id'],
         'showID': showID,
         'airDate': airing['airing_details']['datetime'],
         'duration': airing['airing_details']['duration'],
         'channelID': airing['airing_details']['channel']['object_id'],
-        'channelType': 'guide',
         'scheduled': airing['schedule']['state'],
         'episodeID': episodeID,
       });
-      if (showType != 'movies') {
+      if (showType != 'movies' && episodesAdded.add(episodeID!)) {
         guideEpisodes.add(_createEpisodeMap(
-            airing['episode'] ?? airing['event'], showType, showID!, episodeID!));
+            airing['episode'] ?? airing['event'],
+            showType,
+            showID!,
+            episodeID));
       }
     }
     cache.updateGuideAirings(guideAirings, guideEpisodes);
@@ -254,8 +278,8 @@ class Tablo {
     return serverID;
   }
 
-  Map<String, dynamic> _createEpisodeMap(
-      Map<String, dynamic> episode, String showType, int showID, String episodeID) {
+  Map<String, dynamic> _createEpisodeMap(Map<String, dynamic> episode,
+      String showType, int showID, String episodeID) {
     final episodeMap = <String, dynamic>{};
     if (showType == 'sports' && episode['teams'].length > 0) {
       final teams = <Map<String, dynamic>>[];
@@ -349,7 +373,7 @@ class Tablo {
     };
   }
 
-  int? _getID(String? path) {
+  int? _getIDfromPath(String? path) {
     int? intID;
     try {
       final strID = path == null ? path : path.split('/').last;
@@ -387,11 +411,10 @@ class Tablo {
     return tabloIDs;
   }
 
-  String? _getEpisodeID(Map<String, dynamic> record) {
+  String? _getEpisodeID(Map<String, dynamic> record, int showID) {
     String? episodeID;
     final recordType = _getShowType(record['path']);
     if (recordType == 'series' || recordType == 'sports') {
-      final showID = _getID(record['series_path'] ?? record['sport_path']);
       final seasonNumber = record['episode']?['season_number'] ??
           record['event']?['season'] ??
           '0';
@@ -403,5 +426,87 @@ class Tablo {
       episodeID = '$showID.$episodeNumber.$seasonNumber';
     }
     return episodeID;
+  }
+
+  Future<void> updateRecordings() async {
+    _logMessage('Updating Recordings.');
+    final recordingShowPaths = await _get('recordings/shows');
+    final recordingAiringPaths = await _get('recordings/airings');
+    final recordingShowData = await _batch(recordingShowPaths);
+    final recordingAiringData = await _batch(recordingAiringPaths);
+
+    final recordingShowsXref = <int, int>{};
+    final recordingShows = <Map<String, dynamic>>[];
+    final episodesAdded = <String>{};
+    final recordingEpisodes = <Map<String, dynamic>>[];
+    final recordingErrors = <Map<String, dynamic>>[];
+    final recordings = <Map<String, dynamic>>[];
+
+    _logMessage('Creating recordingShowData List');
+    for (final show in recordingShowData) {
+      final showID = _getIDfromPath(show['guide_path']);
+      if (showID != null) {
+        recordingShowsXref[show['object_id'] * -1] = showID;
+      }
+      recordingShows.add(_createShowMap(show, recording: true));
+    }
+    _logMessage('Creating episode Lists');
+    for (final recording in recordingAiringData) {
+      var recordingShowID = _getIDfromPath(recording['series_path'] ??
+              recording['sport_path'] ??
+              recording['movie_path'])! *
+          -1;
+      final showID = recordingShowsXref[recordingShowID];
+      final episodeID = _getEpisodeID(recording, showID ?? recordingShowID);
+      final showType = _getShowType(recording['path']);
+
+      recordings.add({
+        'recordingID': recording['object_id'],
+        'showID': recordingShowID,
+        'airDate': recording['airing_details']['datetime'],
+        'airingDuration': recording['airing_details']['duration'],
+        'channelID': recording['airing_details']['channel']['object_id'] * -1,
+        'recordingState': recording['video_details']['state'],
+        'clean': recording['video_details']['clean'],
+        'recordingDuration': recording['video_details']['duration'],
+        'recordingSize': recording['video_details']['size'],
+        'comSkipState': recording['video_details']['comskip']['state'],
+        'episodeID': episodeID,
+      });
+      if (showType != 'movies' && episodesAdded.add(episodeID!)) {
+        recordingEpisodes.add(_createEpisodeMap(
+            recording['episode'] ?? recording['event'],
+            showType,
+            showID ?? recordingShowID,
+            episodeID));
+      }
+      if (recording['video_details']['state'] == 'failed' ||
+          recording['video_details']['clean'] == false ||
+          recording['video_details']['comskip']['state'] != 'none' ||
+          recording['video_details']['warnings'].length > 0) {
+        recordingErrors.add({
+          'recordingID': recording['object_id'],
+          'recordingShowID': recordingShowID,
+          'showID': showID,
+          'episodeID': episodeID,
+          'channelID': recording['airing_details']['channel']['object_id'] * -1,
+          'airDate': recording['airing_details']['datetime'],
+          'airingDuration': recording['airing_details']['duration'],
+          'recordingDuration': recording['video_details']['state'],
+          'recordingSize': recording['video_details']['size'],
+          'recordingState': recording['video_details']['state'],
+          'clean': recording['video_details']['clean'],
+          'comSkipState': recording['video_details']['comskip']['state'],
+          'comSkipError': recording['video_details']['comskip']['error'],
+          'errorCode': recording['video_details']['error']?['code'],
+          'errorDetails': recording['video_details']['error']?['details'],
+          'errorDescription': recording['video_details']['error']
+              ?['description'],
+        });
+      }
+    }
+    _logMessage('Saving recordings to database.');
+    cache.updateRecordings(
+        recordingShows, recordings, recordingEpisodes, recordingErrors);
   }
 }
