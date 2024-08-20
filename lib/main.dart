@@ -15,26 +15,26 @@ void main() async {
   // runApp(const MyApp());
   Tablo.redirectLog(log);
   // TODO: Delete the next several lines once the database format is finalized and no longer needs to be recreated from scratch each time
-  logMessage(
-      '$currentLibrary: Backing up or deleting database from previous execution.');
-  final database = File('databases\\$testServerID.cache');
-  if (database.existsSync()) {
-    logMessage('$testServerID.cache exists.');
-    final oldDatabase = File('databases\\$testServerID.cache.old');
-    if (!oldDatabase.existsSync()) {
-      logMessage('Renaming $testServerID.cache');
-      database.renameSync('databases\\$testServerID.cache.old');
-    } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
-      logMessage(
-          'Deleting $testServerID.cache.old and renaming $testServerID.cache');
-      oldDatabase.deleteSync();
-      database.renameSync('databases\\$testServerID.cache.old');
-    } else {
-      logMessage(
-          '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
-      database.deleteSync();
-    }
-  }
+  // logMessage(
+  //     '$currentLibrary: Backing up or deleting database from previous execution.');
+  // final database = File('databases\\$testServerID.cache');
+  // if (database.existsSync()) {
+  //   logMessage('$testServerID.cache exists.');
+  //   final oldDatabase = File('databases\\$testServerID.cache.old');
+  //   if (!oldDatabase.existsSync()) {
+  //     logMessage('Renaming $testServerID.cache');
+  //     database.renameSync('databases\\$testServerID.cache.old');
+  //   } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
+  //     logMessage(
+  //         'Deleting $testServerID.cache.old and renaming $testServerID.cache');
+  //     oldDatabase.deleteSync();
+  //     database.renameSync('databases\\$testServerID.cache.old');
+  //   } else {
+  //     logMessage(
+  //         '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
+  //     database.deleteSync();
+  //   }
+  // }
   final timer = Stopwatch();
   logMessage('Creating Tablo objects');
   timer.start();
@@ -43,6 +43,20 @@ void main() async {
   logMessage('Completed creating Tablo objects');
   logMessage('Total elapsed time: ${timer.elapsed}');
   logMessage('Tablos located: ${tablos.length}');
+  // logMessage('Running delete failed recordings');
+  // for (final tablo in tablos) {
+  //   tablo.deleteFailedRecordings();
+  // }
+  // for (final tablo in tablos) {
+  //   final conflicts = tablo.getConflictedAirings();
+  //   for (final conflict in conflicts) {
+  //     logMessage('Conflicts:');
+  //     for (final show in conflict) {
+  //       logMessage(show.toString());
+  //     }
+  //   }
+  // }
+
   logMessage('Execution complete.');
 }
 
@@ -64,11 +78,12 @@ String getTestServerID() {
 
 void logMessage(String message, {String? level}) {
   if (level == null) {
-    log.logMessage(currentLibrary, message);
+    log.logMessage(message, currentLibrary);
   } else {
-    log.logMessage(currentLibrary, message, level: level);
+    log.logMessage(message, currentLibrary, level: level);
   }
 }
+
 /*
 
 class MyApp extends StatelessWidget {

@@ -830,9 +830,9 @@ class TabloDatabase {
 
   static void _logMessage(String message, {String? level}) {
     if (level == null) {
-      _log.logMessage(_currentLibrary, message);
+      _log.logMessage(message, _currentLibrary);
     } else {
-      _log.logMessage(_currentLibrary, message, level: level);
+      _log.logMessage(message, _currentLibrary, level: level);
     }
   }
 
@@ -1013,5 +1013,98 @@ class TabloDatabase {
         ''');
       }
     }
+  }
+
+  List<Map<String, dynamic>> getFailedRecordings() {
+    final failedRecordingsQueryResults = db.select('''
+      SELECT
+        r.recordingID,
+        st.showType,
+        CASE
+          WHEN st.showType = 'series' THEN 'episodes'
+          WHEN st.showType = 'movies' THEN 'airing'
+          ELSE 'event'
+        END as subType,
+        ec.errorCode,
+        erd.errorDetails,
+        e.errorDescription,
+        CASE
+          WHEN s.title = '' OR s.title IS NULL THEN sp.title
+          ELSE s.title
+        END AS title
+      FROM recording AS r
+      INNER JOIN recordingState AS rs ON r.recordingStateID = rs.recordingStateID
+      INNER JOIN show AS s ON r.showID = s.showID
+      INNER JOIN showType AS st ON s.showTypeID = st.showTypeID
+      INNER JOIN error AS e ON r.recordingID = e.recordingID
+      INNER JOIN errorCode AS ec ON e.errorCodeID = ec.errorCodeID
+      INNER JOIN errorDetails AS erd ON e.errorDetailsID = erd.errorDetailsID
+      LEFT JOIN show AS sp ON s.parentShowID = sp.showID
+      WHERE rs.recordingState = 'failed';
+    ''');
+    final failedRecordings = <Map<String, dynamic>>[];
+    for (final failedRecordingResult in failedRecordingsQueryResults) {
+      failedRecordings.add({
+        'path':
+            'recordings/${failedRecordingResult['showType']}/${failedRecordingResult['subType']}/${failedRecordingResult['recordingID']}',
+        'errorCode': failedRecordingResult['errorcode'],
+        'errorDetails': failedRecordingResult['errorDetails'],
+        'errorDescription': failedRecordingResult['errorDescription'],
+        'title': failedRecordingResult['title'],
+      });
+    }
+
+    return failedRecordings;
+  }
+
+  List<Map<String, dynamic>> getScheduled(
+      {bool excludeScheduled = false, bool excludeConflicts = false}) {
+    String sql;
+    final scheduled = <Map<String, dynamic>>[];
+    if (excludeScheduled && excludeConflicts) {
+      return scheduled;
+    }
+    final filter = excludeScheduled
+        ? "'conflict'"
+        : excludeConflicts
+            ? "'scheduled'"
+            : "'conflict','scheduled'";
+    sql = '''
+      SELECT
+        a.airingID,
+        s.title,
+        a.airDate,
+        a.duration,
+        se.season,
+        e.episode,
+        e.title as episodeTitle,
+        e.descript
+      FROM scheduled sc
+        INNER JOIN airing a ON sc.scheduledID = a.scheduledID
+        INNER JOIN show s ON a.showID = s.showID
+        LEFT JOIN episode e ON a.episodeID = e.episodeID
+        LEFT JOIN season se ON e.seasonID = se.seasonID
+      WHERE sc.scheduled IN ($filter)
+      ORDER BY a.airDate;
+    ''';
+    final cacheResults = db.select(sql);
+    for (final cacheResult in cacheResults) {
+      scheduled.add({
+        'airingID': cacheResult['airingID'],
+        'showTitle': cacheResult['title'],
+        'startDateTime': _convertIntToDateTime(cacheResult['airDate']),
+        'endDateTime': _convertIntToDateTime(
+            cacheResult['airDate'] + cacheResult['duration']),
+        'season': cacheResult['season'],
+        'episode': cacheResult['episode'],
+        'episodeTitle': cacheResult['episodeTitle'],
+        'description': cacheResult['descript'],
+      });
+    }
+    return scheduled;
+  }
+
+  static DateTime _convertIntToDateTime(int timeInSeconds) {
+    return DateTime.fromMillisecondsSinceEpoch(timeInSeconds * 1000);
   }
 }

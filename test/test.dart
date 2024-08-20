@@ -27,21 +27,4 @@ void main() async {
       expect(accessible, isTrue);
     }
   });
-
-  final tablo = tablos[0];
-
-  test('getAllRecordings() returns a Map of items', () async {
-    final recordings = await tablo.getAllRecordings();
-    expect(recordings, isA<Map<String, dynamic>>());
-  }, timeout: const Timeout.factor(4));
-
-  test('getScheduled() returns a Map of items', () async {
-    final scheduled = await tablo.getScheduled();
-    expect(scheduled, isA<Map<String, dynamic>>());
-  }, timeout: const Timeout.factor(4));
-
-  test('getFullGuide() returns a Map of items', () async {
-    final fullGuide = await tablo.getScheduled();
-    expect(fullGuide, isA<Map<String, dynamic>>());
-  }, timeout: const Timeout.factor(14));
 }

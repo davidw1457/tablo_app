@@ -36,9 +36,9 @@ class Tablo {
 
   static void _logMessage(String message, {String? level}) {
     if (level == null) {
-      _log.logMessage(_currentLibrary, message);
+      _log.logMessage(message, _currentLibrary);
     } else {
-      _log.logMessage(_currentLibrary, message, level: level);
+      _log.logMessage(message, _currentLibrary, level: level);
     }
   }
 
@@ -87,6 +87,15 @@ class Tablo {
     return tablos;
   }
 
+  Future<void> deleteFailedRecordings() async {
+    final failedRecordings = cache.getFailedRecordings();
+    for (final recording in failedRecordings) {
+      _logMessage(
+          'Deleting ${recording['title']}. ${recording['errorCode']}: ${recording['errorDetails']}: ${recording['errorDescription']}');
+      await _delete(recording['path']);
+    }
+  }
+
   static Future<bool> isServerAvailable(
       String ipAddress, String serverID) async {
     _logMessage('Testing $serverID availability.');
@@ -107,28 +116,6 @@ class Tablo {
 
   Tablo._internalConstructor(this.serverID, this.privateIP, this.cache)
       : saveCacheToDisk = cache.saveToDisk;
-
-  Future<List<Map<String, dynamic>>> getAllRecordings() async {
-    final recordings = await _get('recordings/airings') as List<dynamic>;
-    final responseBody = await _batch(recordings);
-    return responseBody;
-  }
-
-  Future<List<Map<String, dynamic>>> getScheduled() async {
-    final scheduled =
-        await _get('guide/airings?state=scheduled') as List<dynamic>;
-    final conflicted =
-        await _get('guide/airings?state=conflicted') as List<dynamic>;
-    scheduled.addAll(conflicted);
-    final responseBody = await _batch(scheduled);
-    return responseBody;
-  }
-
-  Future<List<Map<String, dynamic>>> getFullGuide() async {
-    final fullGuide = await _get('guide/airings') as List<dynamic>;
-    final responseBody = await _batch(fullGuide);
-    return responseBody;
-  }
 
   Future<void> updateSystemInfoTable() async {
     final fullInfo = <String, dynamic>{};
@@ -264,10 +251,7 @@ class Tablo {
       });
       if (showType != 'movies' && episodesAdded.add(episodeID!)) {
         guideEpisodes.add(_createEpisodeMap(
-            airing['episode'] ?? airing['event'],
-            showType,
-            showID!,
-            episodeID));
+            airing['episode'] ?? airing['event'], showType, showID, episodeID));
       }
     }
     cache.updateGuideAirings(guideAirings, guideEpisodes);
@@ -508,5 +492,78 @@ class Tablo {
     _logMessage('Saving recordings to database.');
     cache.updateRecordings(
         recordingShows, recordings, recordingEpisodes, recordingErrors);
+  }
+
+  Future<void> _delete(String path) async {
+    final url = Uri.http('$privateIP:$_tabloServerPort', path);
+    _logMessage('http.delete($url);');
+    await http.delete(url);
+  }
+
+  List<List<Map<String, dynamic>>> getConflictedAirings() {
+    final conflicts = <List<Map<String, dynamic>>>[];
+
+    final cacheConflicts = cache.getScheduled(excludeScheduled: true);
+    final cacheScheduled = cache.getScheduled(excludeConflicts: true);
+
+    for (final conflict in cacheConflicts) {
+      final conflictList = <Map<String, dynamic>>[];
+      conflictList.add({
+        'airingID': conflict['airingID'],
+        'showTitle': conflict['showTitle'],
+        'startDateTime': conflict['startDateTime'],
+        'endDateTime': conflict['endDateTime'],
+        'season': conflict['season'],
+        'episode': conflict['episode'],
+        'episodeTitle': conflict['episodeTitle'],
+        'description': conflict['description'],
+      });
+      for (final scheduled in cacheScheduled) {
+        if (_areOverlappingAirings(conflict, scheduled)) {
+          conflictList.add({
+            'airingID': conflict['airingID'],
+            'showTitle': scheduled['showTitle'],
+            'startDateTime': scheduled['startDateTime'],
+            'endDateTime': scheduled['endDateTime'],
+            'season': scheduled['season'],
+            'episode': scheduled['episode'],
+            'episodeTitle': scheduled['episodeTitle'],
+            'description': scheduled['description'],
+          });
+        }
+      }
+      conflicts.add(conflictList);
+    }
+    return conflicts;
+  }
+
+  static bool _areOverlappingAirings(
+      Map<String, dynamic> primary, Map<String, dynamic> secondary) {
+    // Breaking out the many positive conditions to keep it readable
+    // This method could be re-written as follows, but is difficult to read:
+    // return
+    //   secondary['startDateTime'].isAtSameMomentAs(primary['startDateTime']) || secondary['endDateTime'].isAtSameMomentAs(primary['endDateTime']) ||
+    //   (secondary['startDateTime'].isAfter(primary['startDateTime']) && secondary['startDateTime'].isBefore(primary['endDateTime'])) ||
+    //   (secondary['endDateTime'].isAfter(primary['startDateTime']) && secondary['endDateTime'].isBefore(primary['endDateTime'])) ||
+    //   (secondary['startDateTime'].isBefore(primary['startDateTime']) && secondary['endDateTime'].isAfter(primary['endDateTime']));
+    var overlapping = false;
+    if (secondary['startDateTime'].isAtSameMomentAs(primary['startDateTime']) ||
+        secondary['endDateTime'].isAtSameMomentAs(primary['endDateTime'])) {
+      // Two shoes start or end at the same time
+      overlapping = true;
+    } else if (secondary['startDateTime'].isAfter(primary['startDateTime']) &&
+        secondary['startDateTime'].isBefore(primary['endDateTime'])) {
+      // Secondary show starts during the primary show.
+      overlapping = true;
+    } else if (secondary['endDateTime'].isAfter(primary['startDateTime']) &&
+        secondary['endDateTime'].isBefore(primary['endDateTime'])) {
+      // Secondary show ends during the primary show
+      overlapping = true;
+    } else if (secondary['startDateTime'].isBefore(primary['startDateTime']) &&
+        secondary['endDateTime'].isAfter(primary['endDateTime'])) {
+      // Primary show is entirely during the Secondary show. The inverse is captured in the previous two cases.
+      overlapping = true;
+    }
+    return overlapping;
   }
 }
