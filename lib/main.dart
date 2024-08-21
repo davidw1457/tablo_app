@@ -43,20 +43,29 @@ void main() async {
   logMessage('Completed creating Tablo objects');
   logMessage('Total elapsed time: ${timer.elapsed}');
   logMessage('Tablos located: ${tablos.length}');
+  final tablo = tablos[0];
+  
   // logMessage('Running delete failed recordings');
-  // for (final tablo in tablos) {
-  //   tablo.deleteFailedRecordings();
-  // }
-  // for (final tablo in tablos) {
-  //   final conflicts = tablo.getConflictedAirings();
-  //   for (final conflict in conflicts) {
-  //     logMessage('Conflicts:');
-  //     for (final show in conflict) {
-  //       logMessage(show.toString());
-  //     }
+  // tablo.deleteFailedRecordings(); // Change this into getting then deleting aka bad recordings below
+  
+  // final conflicts = tablo.getConflictedAirings();
+  // for (final conflict in conflicts) {
+  //   logMessage('Conflicts:');
+  //   for (final show in conflict) {
+  //     logMessage(show.toString());
   //   }
   // }
 
+  // final badRecordings = tablo.getBadRecordings();
+  // final pathList = <String>[];
+  // for (final badRecording in badRecordings) {
+  //   logMessage(badRecording.toString());
+  //   pathList.add(badRecording['path']);
+  // }
+  // tablo.deleteRecordingList(pathList);
+
+  await tablo.exportRecording(4849037);
+  
   logMessage('Execution complete.');
 }
 

@@ -7,6 +7,7 @@ import 'package:tablo_app/log.dart';
 class TabloDatabase {
   final Database db;
   final String serverID;
+  double _badRecordingThreshold = 0.9;
   static const _dbVer = 1;
 
   static const _currentLibrary = 'tablo_database';
@@ -543,15 +544,20 @@ class TabloDatabase {
     lookup['scheduled'] = _getLookup('scheduled');
     lookup['season'] = _getLookup('season');
     lookup['seasonType'] = _getLookup('seasonType');
+
     lookup = _updateLookups(guideAirings, lookup);
     lookup = _updateLookups(guideEpisodes, lookup);
+
     guideAirings = _addLookupIDs(guideAirings, lookup);
     guideEpisodes = _addLookupIDs(guideEpisodes, lookup);
+
     final guideAiringsClean = _sanitizeList(guideAirings);
     final guideEpisodesClean = _sanitizeList(guideEpisodes);
+
     for (final episode in guideEpisodesClean) {
       _updateEpisode(episode);
     }
+    
     for (final airing in guideAiringsClean) {
       db.execute('''
         INSERT INTO airing (
@@ -1020,11 +1026,6 @@ class TabloDatabase {
       SELECT
         r.recordingID,
         st.showType,
-        CASE
-          WHEN st.showType = 'series' THEN 'episodes'
-          WHEN st.showType = 'movies' THEN 'airing'
-          ELSE 'event'
-        END as subType,
         ec.errorCode,
         erd.errorDetails,
         e.errorDescription,
@@ -1045,8 +1046,7 @@ class TabloDatabase {
     final failedRecordings = <Map<String, dynamic>>[];
     for (final failedRecordingResult in failedRecordingsQueryResults) {
       failedRecordings.add({
-        'path':
-            'recordings/${failedRecordingResult['showType']}/${failedRecordingResult['subType']}/${failedRecordingResult['recordingID']}',
+        'path': _getItemPath('recordings', failedRecordingResult['recordingID'], failedRecordingResult['showType']),
         'errorCode': failedRecordingResult['errorcode'],
         'errorDetails': failedRecordingResult['errorDetails'],
         'errorDescription': failedRecordingResult['errorDescription'],
@@ -1072,6 +1072,7 @@ class TabloDatabase {
     sql = '''
       SELECT
         a.airingID,
+        st.showType,
         s.title,
         a.airDate,
         a.duration,
@@ -1082,6 +1083,7 @@ class TabloDatabase {
       FROM scheduled sc
         INNER JOIN airing a ON sc.scheduledID = a.scheduledID
         INNER JOIN show s ON a.showID = s.showID
+        INNER JOIN showType st ON s.showTypeID = st.showTypeID
         LEFT JOIN episode e ON a.episodeID = e.episodeID
         LEFT JOIN season se ON e.seasonID = se.seasonID
       WHERE sc.scheduled IN ($filter)
@@ -1091,6 +1093,7 @@ class TabloDatabase {
     for (final cacheResult in cacheResults) {
       scheduled.add({
         'airingID': cacheResult['airingID'],
+        'path': _getItemPath('guide', cacheResult['airingID'], cacheResult['showType']),
         'showTitle': cacheResult['title'],
         'startDateTime': _convertIntToDateTime(cacheResult['airDate']),
         'endDateTime': _convertIntToDateTime(
@@ -1106,5 +1109,65 @@ class TabloDatabase {
 
   static DateTime _convertIntToDateTime(int timeInSeconds) {
     return DateTime.fromMillisecondsSinceEpoch(timeInSeconds * 1000);
+  }
+  
+  String _getItemPath(String pathType, int itemID, String showType) {
+    const subType = {
+      'series': 'episodes',
+      'sports': 'events',
+      'movies': 'airings'
+    };
+    final itemPath = StringBuffer(pathType == 'recordings' ? 'recordings/' : 'guide/');
+    itemPath.write('$showType/');
+    if (pathType != 'show') itemPath.write('${subType[showType]}/');
+    itemPath.write(itemID.toString());
+    return itemPath.toString();
+  }
+
+  List<Map<String, dynamic>> getBadRecordings() {
+    String sql;
+    final badRecordings = <Map<String, dynamic>>[];
+    sql = '''
+      SELECT
+        r.recordingID,
+        st.showType,
+        CASE
+          WHEN s.title = '' OR s.title IS NULL THEN ps.title
+          ELSE s.title
+        END AS title,
+        r.airDate,
+        se.season,
+        e.episode,
+        e.title AS episodeTitle,
+        e.descript,
+        r.clean,
+        (r.recordingDuration * 100) / r.airingDuration AS percentage
+      FROM recording AS r
+        INNER JOIN recordingState AS rs ON r.recordingStateID = rs.recordingStateID
+        INNER JOIN show AS s ON r.showID = s.showID
+        INNER JOIN showType AS st ON s.showTypeID = st.showTypeID
+        LEFT JOIN show as ps ON s.parentShowID = ps.showID
+        LEFT JOIN episode AS e ON r.episodeID = e.episodeID
+        LEFT JOIN season AS se ON e.seasonID = se.seasonID
+      WHERE
+        rs.recordingState = 'finished' AND
+        r.recordingDuration < r.airingDuration * $_badRecordingThreshold;
+    ''';
+    final cacheResults = db.select(sql);
+    for (final cacheResult in cacheResults) {
+      badRecordings.add({
+        'recordingID': cacheResult['recordingID'],
+        'path': _getItemPath('recordings', cacheResult['recordingID'], cacheResult['showType']),
+        'showTitle': cacheResult['title'],
+        'startDateTime': _convertIntToDateTime(cacheResult['airDate']),
+        'season': cacheResult['season'],
+        'episode': cacheResult['episode'],
+        'episodeTitle': cacheResult['episodeTitle'],
+        'description': cacheResult['descript'],
+        'clean': cacheResult['clean'],
+        'percentage': cacheResult['percentage'],
+      });
+    }
+    return badRecordings;
   }
 }

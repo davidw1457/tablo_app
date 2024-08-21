@@ -77,7 +77,7 @@ class Tablo {
         _logMessage('Updating guide shows for $tablo');
         await tablo.updateGuideShows();
         _logMessage('Updating scheduled airings for $tablo');
-        await tablo.updateGuideAirings(scheduledOnly: true);
+        await tablo.updateGuideAirings(scheduledOnly: false);
         _logMessage('Updating recordings for $tablo');
         await tablo.updateRecordings();
         _logMessage('Saving cache to disk for $tablo');
@@ -273,7 +273,7 @@ class Tablo {
           'teamID': team['team_id'],
         });
       }
-      episodeMap['teams'] = teams;
+      episodeMap['team'] = teams;
     }
     episodeMap['episodeID'] = episodeID;
     episodeMap['showID'] = showID;
@@ -299,7 +299,7 @@ class Tablo {
     return json.decode(body);
   }
 
-  Future<dynamic> _post(String path, String data) async {
+  Future<dynamic> _post(String path, {String? data}) async {
     final url = Uri.http('$privateIP:$_tabloServerPort', path);
     http.Response response;
     try {
@@ -318,7 +318,7 @@ class Tablo {
     final data = _listStringMerge(list, _maximumBatchItemCount);
     final responseBody = <String, dynamic>{};
     for (final datum in data) {
-      final iterResponseBody = await _post('batch', datum);
+      final iterResponseBody = await _post('batch', data: datum);
       responseBody.addAll(iterResponseBody);
     }
     _logMessage('Batch POST complete.');
@@ -510,6 +510,7 @@ class Tablo {
       final conflictList = <Map<String, dynamic>>[];
       conflictList.add({
         'airingID': conflict['airingID'],
+        'path': conflict['path'],
         'showTitle': conflict['showTitle'],
         'startDateTime': conflict['startDateTime'],
         'endDateTime': conflict['endDateTime'],
@@ -521,7 +522,8 @@ class Tablo {
       for (final scheduled in cacheScheduled) {
         if (_areOverlappingAirings(conflict, scheduled)) {
           conflictList.add({
-            'airingID': conflict['airingID'],
+            'airingID': scheduled['airingID'],
+            'path': scheduled['path'],
             'showTitle': scheduled['showTitle'],
             'startDateTime': scheduled['startDateTime'],
             'endDateTime': scheduled['endDateTime'],
@@ -565,5 +567,44 @@ class Tablo {
       overlapping = true;
     }
     return overlapping;
+  }
+
+  List<Map<String, dynamic>> getBadRecordings() {
+    final badRecordingsQueryResults = cache.getBadRecordings();
+    final badRecordings = <Map<String, dynamic>>[];
+    for (final badRecording in badRecordingsQueryResults) {
+      badRecordings.add({
+        'recordingID': badRecording['recordingID'],
+        'path': badRecording['path'],
+        'showTitle': badRecording['showTitle'],
+        'startDateTime': badRecording['startDateTime'],
+        'season': badRecording['season'],
+        'episode': badRecording['episode'],
+        'episodeTitle': badRecording['episodeTitle'],
+        'description': badRecording['description'],
+        'clean': badRecording['clean'],
+        'percentage': badRecording['percentage'],
+      });
+    }
+    return badRecordings;
+  }
+
+  Future<void> deleteRecordingList(List<String> paths) async {
+    for (final path in paths) {
+      await _delete(path);
+    }
+  }
+
+  Future<void> exportRecording(int recordingID) async {
+    final watchApiResponse = await _post('recordings/series/episodes/$recordingID/watch');
+    _logMessage(watchApiResponse['playlist_url']);
+
+    // we'll start with ffmpeg -i [input path] -c copy [outputfilename].mp4 and see what happens
+
+    final result = await Process.run('ffmpeg/ffmpeg.exe', ['-i', '${watchApiResponse['playlist_url']}', '-c', 'copy', 'output/outputsample.mp4']);
+    _logMessage(result.exitCode.toString());
+    _logMessage(result.stderr.toString());
+    _logMessage(result.stdout.toString());
+
   }
 }
