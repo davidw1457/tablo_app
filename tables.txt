@@ -1,0 +1,136 @@
+Tables
+
+system
+    server_id       Text    from api.tablotv.com/assocserver/getipinfo
+    name            Text    from api.tablotv.com/assocserver/getipinfo
+    local_address   Text    from api.tablotv.com/assocserver/getipinfo
+    dbVer           Int     Set at database creation
+    last_updated    Int     Set at each pull from Tablo
+    last_cached     Int     Set at each write to disk
+    size            Int     from server/harddrives
+    free            Int     from server/harddrives
+channel
+    channelID       Int     from [g|r]/c/#
+    call_sign       Text    from [g|r]/c/#
+    major           Int     from [g|r]/c/#
+    minor           Int     from [g|r]/c/#
+    network         Text    from [g|r]/c/#
+show
+    showID          Int     from g/[s/m/sp]/#
+    rule            Int     from g/[s/sp]/#     lookup table
+    channelID       Int     from g/[s/sp]/#
+    keep            Text    from g/[s/m/sp]/#   lookup table
+    count           Int     from g/[s/m/sp]/#
+    type            Int     series/movie/sports lookup table
+    title           Text    from g/[s/m/sp]/#
+    description     Text    from g/[s/m/sp]/#   movies.plot
+    releaseDate     Int     from g/[s/m]/#      series.origAirDate & movies.releaseYear
+    origRunTime     Int     from g/[s/m]/#      series.runTime
+    rating          Int     from g/[s/m]/#      lookup table
+    stars           Int     from g/m/#
+rule
+    ruleID          Int     auto-increment
+    rule            Text    from g/[s/m/sp]/#
+keep
+    keepID          Int     auto-increment
+    keep            Text    from g/[s/m/sp]/#
+type
+    typeID          Int     auto-increment
+    type            Text    movies, series, sport
+    suffix          Text    /airings, /episodes, /events
+showgenre
+    showID          Int     from g/[s/m/sp]/#
+    genreID         Int     auto-increment (from genre table)
+genre
+    genreID         Int     auto-increment
+    genre           Text    from g/[s/m/sp]/#
+rating
+    ratingID        Int     auto-increment
+    rating          Text    from g/[s/m/sp]/#
+showcast
+    showID          Int     from g/[s/m/sp]/#
+    castID          Int     auto-increment (from cast table)
+cast
+    castID          Int     auto-increment
+    cast            Text    from g/[s/m/sp]/#
+showaward
+    showID          Int     from g/[s/m/sp]/#
+    awardID         Int     auto-increment (from award table)
+award
+    awardID         Int     auto-increment
+    award           Text
+showDirector
+    showID          Int     from g/[s/m/sp]/#
+    castID          Int     auto-increment (from cast table)
+airing
+    airingID        Int     from g/[s/e|m/a|sp/e]/#
+    showID          Int     from g/[s/e|m/a|sp/e]/#
+    datetime        Int     from g/[s/e|m/a|sp/e]/#
+    duration        Int     from g/[s/e|m/a|sp/e]/#
+    channelID       Int     from g/[s/e|m/a|sp/e]/#
+    scheduled       Int     from g/[s/e|m/a|sp/e]/# lookup table
+    type            Int     series/movie/sports     lookup table
+    episodeID       Int     from g/s/e/# generated from showID, season#, episode#
+scheduled
+    scheduledID     Int
+    scheduled       Text
+episode
+    episodeID       Int     generated from showID, season#, episode#
+    title           Text    from g/[s/e|sp/e]/#
+    description     Text    from g/[s/e|sp/e]/#
+    episode         Int     from g/s/e/#
+    season          Int     from g/[s/e|sp/e]/# lookup table for sports
+    seasonType      Int     from g/sp/e/#       lookup table
+    origAirDate     Int     from g/s/e/#
+    venue           Int     from g/sp/e/#       lookup table
+    homeTeam        Int     from g/sp/e/#       lookup table
+season
+    seasonID        Int     auto-increment, start @ 1000?
+    season          Text    from g/sp/e/#
+seasonType
+    seasonTypeID    Int     auto-increment
+    seasonType      Text    from g/sp/e/#
+venue
+    venueID         Int     auto-increment
+    venue           Text
+team
+    teamID          Int     from g/sp/e/#
+    name            Text    from g/sp/e/#
+episodeTeam
+    episodeID       Int     from r/sp/e/#
+    teamID          Int     from r/sp/e/#
+recordingshow
+    recordingShowID Int     from r/[s|m|sp]/#
+    showID          Int     from r/[s|m|sp]/#
+recording
+    recordingID     Int     from r/[s/e|m/a|sp/e]/#
+    recordingShowID Int     from r/[s/e|m/a|sp/e]/#
+    datetime        Int     from r/[s/e|m/a|sp/e]/#
+    airingDuration  Int     from r/[s/e|m/a|sp/e]/#
+    channelID       Int     from r/[s/e|m/a|sp/e]/#
+    state           Int     from r/[s/e|m/a|sp/e]/# lookup table
+    clean           Int     from r/[s/e|m/a|sp/e]/# true/false 1/0
+    recordingDuration   Int from r/[s/e|m/a|sp/e]/#
+    comSkipStateID  Int     from r/[s/e|m/a|sp/e]/# lookup table
+    episodeID       Int     generated from showID, season#
+state
+    stateID         Int
+    state           Text
+comSkipState
+    comSkipStateID  Int
+    comSkipState    Text
+error
+    errorID         Int
+    recordingID     Int
+    recordingShowID Int
+    showID          Int
+    episodeID       Int
+    channelID       Int
+    datetime        Int
+    duration        Int
+    comSkipStateID  Int     from r/[s/e|m/a|sp/e]/# lookup table
+    comskiperror    Text    from r/[s/e|m/a|sp/e]/#
+    errorcode       Text    from r/[s/e|m/a|sp/e]/#
+    errordetails    Text    from r/[s/e|m/a|sp/e]/#
+    errordesc       Text    from r/[s/e|m/a|sp/e]/#
+

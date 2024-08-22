@@ -599,12 +599,10 @@ class Tablo {
     final watchApiResponse = await _post('recordings/series/episodes/$recordingID/watch');
     _logMessage(watchApiResponse['playlist_url']);
 
-    // we'll start with ffmpeg -i [input path] -c copy [outputfilename].mp4 and see what happens
-
-    final result = await Process.run('ffmpeg/ffmpeg.exe', ['-i', '${watchApiResponse['playlist_url']}', '-c', 'copy', 'output/outputsample.mp4']);
-    _logMessage(result.exitCode.toString());
-    _logMessage(result.stderr.toString());
-    _logMessage(result.stdout.toString());
-
+    _logMessage('Starting "ffmpeg -i [input path] -c copy [outputfilename].mp4" with Process.start');
+    final process = await Process.start('ffmpeg/ffmpeg.exe', ['-i', '${watchApiResponse['playlist_url']}', '-c', 'copy', 'output/outputsample3.mp4']);
+    stderr.addStream(process.stderr);
+    // Do something with this stream to update progress on item somehow
+    await stdout.addStream(process.stdout);
   }
 }
