@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:developer';
+import 'dart:math';
+// import 'dart:developer';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
 
 import 'package:tablo_app/log.dart';
 import 'package:tablo_app/tablo_database.dart';
@@ -77,23 +79,14 @@ class Tablo {
         _logMessage('Updating guide shows for $tablo');
         await tablo.updateGuideShows();
         _logMessage('Updating scheduled airings for $tablo');
-        await tablo.updateGuideAirings(scheduledOnly: false);
+        await tablo.updateGuideAirings(scheduledOnly: true);
         _logMessage('Updating recordings for $tablo');
         await tablo.updateRecordings();
         _logMessage('Saving cache to disk for $tablo');
-        tablo.saveCacheToDisk();
+        await tablo.saveCacheToDisk();
       }
     }
     return tablos;
-  }
-
-  Future<void> deleteFailedRecordings() async {
-    final failedRecordings = cache.getFailedRecordings();
-    for (final recording in failedRecordings) {
-      _logMessage(
-          'Deleting ${recording['title']}. ${recording['errorCode']}: ${recording['errorDetails']}: ${recording['errorDescription']}');
-      await _delete(recording['path']);
-    }
   }
 
   static Future<bool> isServerAvailable(
@@ -283,7 +276,7 @@ class Tablo {
     episodeMap['season'] =
         episode['season_number']?.toString() ?? episode['season']?.toString();
     episodeMap['seasonType'] = episode['season_type'];
-    episodeMap['airDate'] = episode['orig_air_date'];
+    episodeMap['originalAirDate'] = episode['orig_air_date'];
     episodeMap['homeTeamID'] = episode['home_team_id'];
     return episodeMap;
   }
@@ -407,7 +400,7 @@ class Tablo {
         final airDate = DateTime.parse(record['airing_details']['datetime']);
         episodeNumber = airDate.millisecondsSinceEpoch ~/ 524288;
       }
-      episodeID = '$showID.$episodeNumber.$seasonNumber';
+      episodeID = '$showID.$seasonNumber.$episodeNumber';
     }
     return episodeID;
   }
@@ -509,28 +502,28 @@ class Tablo {
     for (final conflict in cacheConflicts) {
       final conflictList = <Map<String, dynamic>>[];
       conflictList.add({
-        'airingID': conflict['airingID'],
-        'path': conflict['path'],
         'showTitle': conflict['showTitle'],
         'startDateTime': conflict['startDateTime'],
-        'endDateTime': conflict['endDateTime'],
         'season': conflict['season'],
         'episode': conflict['episode'],
         'episodeTitle': conflict['episodeTitle'],
         'description': conflict['description'],
+        'endDateTime': conflict['endDateTime'],
+        'path': conflict['path'],
+        'airingID': conflict['airingID'],
       });
       for (final scheduled in cacheScheduled) {
         if (_areOverlappingAirings(conflict, scheduled)) {
           conflictList.add({
-            'airingID': scheduled['airingID'],
-            'path': scheduled['path'],
             'showTitle': scheduled['showTitle'],
             'startDateTime': scheduled['startDateTime'],
-            'endDateTime': scheduled['endDateTime'],
             'season': scheduled['season'],
             'episode': scheduled['episode'],
             'episodeTitle': scheduled['episodeTitle'],
             'description': scheduled['description'],
+            'endDateTime': scheduled['endDateTime'],
+            'path': scheduled['path'],
+            'airingID': scheduled['airingID'],
           });
         }
       }
@@ -569,9 +562,13 @@ class Tablo {
     return overlapping;
   }
 
-  List<Map<String, dynamic>> getBadRecordings() {
-    final badRecordingsQueryResults = cache.getBadRecordings();
+  List<Map<String, dynamic>> getRecordings(
+      {bool bad = false, bool failed = false}) {
+    _logMessage('Fetching recordings from database');
+    final badRecordingsQueryResults =
+        cache.getRecordings(bad: bad, failed: failed);
     final badRecordings = <Map<String, dynamic>>[];
+    _logMessage('Parsing recordings');
     for (final badRecording in badRecordingsQueryResults) {
       badRecordings.add({
         'recordingID': badRecording['recordingID'],
@@ -595,14 +592,157 @@ class Tablo {
     }
   }
 
-  Future<void> exportRecording(int recordingID) async {
-    final watchApiResponse = await _post('recordings/series/episodes/$recordingID/watch');
-    _logMessage(watchApiResponse['playlist_url']);
+  Future<void> exportRecording(int recordingID, {bool delete = false}) async {
+    const exportSuccessThreshold = 0.997;
+    final episodeDetails = cache.getRecordingDetails(recordingID);
+    final exportPath = _getExportFullPath(episodeDetails);
 
-    _logMessage('Starting "ffmpeg -i [input path] -c copy [outputfilename].mp4" with Process.start');
-    final process = await Process.start('ffmpeg/ffmpeg.exe', ['-i', '${watchApiResponse['playlist_url']}', '-c', 'copy', 'output/outputsample3.mp4']);
-    stderr.addStream(process.stderr);
-    // Do something with this stream to update progress on item somehow
-    await stdout.addStream(process.stdout);
+    if (File(exportPath).existsSync()) {
+      // For now, we'll skip if the file exists already
+      // TODO: Optionally suffix
+      _logMessage('$exportPath already exists. Skipping.');
+      return;
+    } else if (!Directory(path.dirname(exportPath)).existsSync()) {
+      Directory(path.dirname(exportPath)).createSync(recursive: true);
+    }
+
+    final watchApiResponse = await _post('${episodeDetails['path']}/watch');
+
+    _logMessage('Exporting $exportPath');
+    final process = await Process.start(path.join('ffmpeg', 'ffmpeg.exe'), [
+      '-i',
+      '${watchApiResponse['playlist_url']}',
+      '-c',
+      'copy',
+      exportPath
+    ]);
+    // stderr.addStream(process.stderr);
+    // TODO: Do something with this stream to update progress on item somehow
+    process.stdout.transform(utf8.decoder).forEach((line) {
+      if (line.startsWith('size=')) {
+        final speed = line.split('=').last;
+        if (speed.startsWith('0')) {
+          _logMessage(
+              'Speed dropped to $speed. Skipping export for $recordingID');
+          process.kill();
+          if (File(exportPath).existsSync()) {
+            File(exportPath).deleteSync();
+          }
+          return;
+        }
+      }
+    });
+    await process.stderr.drain();
+    // await for (final value in process.stdout) {
+    //   final str = utf8.decode(value);
+    //   if (str.startsWith('size=')) {
+    //     final speed = str.split('=').last;
+    //     if (speed.startsWith('0')) {
+    //       _logMessage('Speed dropped to $speed. Skipping export for $recordingID');
+    //       process.kill();
+    //       if (File(exportPath).existsSync()) {
+    //         File(exportPath).deleteSync();
+    //       }
+    //       return;
+    //     }
+    //   }
+    // }
+
+    _logMessage('Verifying export $exportPath.');
+    final durationRaw =
+        await Process.runSync(path.join('ffmpeg', 'ffprobe.exe'), [
+      '-v',
+      'error',
+      '-hide_banner',
+      '-of',
+      'default=noprint_wrappers=0',
+      '-print_format',
+      'json',
+      '-show_entries',
+      'stream=duration',
+      exportPath
+    ]).stdout;
+    final duration = json.decode(durationRaw.toString());
+
+    double exportDuration = 0.0;
+    final recordingDuration = episodeDetails['recordingDuration'].toDouble();
+    final firstDuration = double.parse(duration['streams'][0]['duration']);
+    final secondDuration = double.parse(duration['streams'][1]['duration']);
+
+    if (firstDuration >= secondDuration * exportSuccessThreshold &&
+        firstDuration * exportSuccessThreshold <= secondDuration) {
+      exportDuration = min(firstDuration, secondDuration);
+    } else if (File(exportPath).existsSync()) {
+      _logMessage('Stream duration variance outside of error threshold.');
+      _logMessage('1: $firstDuration 2: $secondDuration');
+      File(exportPath).deleteSync();
+      return;
+    }
+
+    if (delete &&
+        exportDuration >= recordingDuration * exportSuccessThreshold) {
+      await _delete(episodeDetails['path']);
+    } else if (File(exportPath).existsSync() &&
+        exportDuration < recordingDuration * exportSuccessThreshold) {
+      _logMessage('Export does not match recorded length.');
+      _logMessage('Export: $exportDuration Recorded: $recordingDuration');
+      File(exportPath).deleteSync();
+    }
+  }
+
+  String _getExportFullPath(Map<String, dynamic> episodeDetails) {
+    // TODO: Create a logic to customize file naming
+    final sanitizedEpisodeDetails = _sanitizeMap(episodeDetails);
+    var fullPath = r'\\bigdaddy\TabloBackups\';
+    switch (sanitizedEpisodeDetails['showType']) {
+      case 'series':
+        fullPath = path.join(
+            fullPath,
+            'TV',
+            sanitizedEpisodeDetails['showTitle'],
+            'Season ${sanitizedEpisodeDetails['season']}',
+            '${sanitizedEpisodeDetails['showTitle']} - s${sanitizedEpisodeDetails['season']}e${sanitizedEpisodeDetails['episode']} - ${sanitizedEpisodeDetails['episodeTitle']}.mp4');
+      case 'movies':
+        fullPath = path.join(
+            fullPath, 'Movies', '${sanitizedEpisodeDetails['showTitle']}.mp4');
+      case 'sports':
+        fullPath = path.join(
+            fullPath,
+            'Sports',
+            sanitizedEpisodeDetails['showTitle'],
+            'Season ${sanitizedEpisodeDetails['season']}',
+            '.mp4');
+    }
+    return fullPath;
+  }
+
+  Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
+    final sanitizedMap = <String, dynamic>{};
+    for (final key in map.keys) {
+      if (map[key] is String) {
+        sanitizedMap[key] = _sanitizeString(map[key]);
+      } else if (map[key] is int) {
+        sanitizedMap[key] = map[key];
+      } else {
+        throw FormatException(
+            'Unable to sanitize map[$key]: ${map[key].runtimeType}');
+      }
+    }
+    return sanitizedMap;
+  }
+
+  String _sanitizeString(String str) {
+    var sanitizedString = str.replaceAll(RegExp(r'''[\\/:*?"<>|']'''), '_');
+    if (sanitizedString.length == 1) {
+      try {
+        int.parse(sanitizedString);
+        return '0$sanitizedString';
+      } on FormatException {
+        return sanitizedString;
+      }
+    } else if (sanitizedString.length > 50) {
+      return sanitizedString.substring(0, 50);
+    }
+    return sanitizedString;
   }
 }

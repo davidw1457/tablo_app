@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:developer';
+// import 'dart:developer';
 
 import 'package:sqlite3/sqlite3.dart';
 import 'package:tablo_app/log.dart';
@@ -7,7 +7,7 @@ import 'package:tablo_app/log.dart';
 class TabloDatabase {
   final Database db;
   final String serverID;
-  double _badRecordingThreshold = 0.9;
+  final double _badRecordingThreshold = 0.9;
   static const _dbVer = 1;
 
   static const _currentLibrary = 'tablo_database';
@@ -557,7 +557,7 @@ class TabloDatabase {
     for (final episode in guideEpisodesClean) {
       _updateEpisode(episode);
     }
-    
+
     for (final airing in guideAiringsClean) {
       db.execute('''
         INSERT INTO airing (
@@ -626,9 +626,9 @@ class TabloDatabase {
     return cleanList;
   }
 
-  saveToDisk() {
+  saveToDisk() async {
     final writedb = sqlite3.open('databases/$serverID.cache');
-    _backup(db, writedb);
+    await _backup(db, writedb);
     writedb.dispose();
   }
 
@@ -1046,7 +1046,8 @@ class TabloDatabase {
     final failedRecordings = <Map<String, dynamic>>[];
     for (final failedRecordingResult in failedRecordingsQueryResults) {
       failedRecordings.add({
-        'path': _getItemPath('recordings', failedRecordingResult['recordingID'], failedRecordingResult['showType']),
+        'path': _getItemPath('recordings', failedRecordingResult['recordingID'],
+            failedRecordingResult['showType']),
         'errorCode': failedRecordingResult['errorcode'],
         'errorDetails': failedRecordingResult['errorDetails'],
         'errorDescription': failedRecordingResult['errorDescription'],
@@ -1093,7 +1094,8 @@ class TabloDatabase {
     for (final cacheResult in cacheResults) {
       scheduled.add({
         'airingID': cacheResult['airingID'],
-        'path': _getItemPath('guide', cacheResult['airingID'], cacheResult['showType']),
+        'path': _getItemPath(
+            'guide', cacheResult['airingID'], cacheResult['showType']),
         'showTitle': cacheResult['title'],
         'startDateTime': _convertIntToDateTime(cacheResult['airDate']),
         'endDateTime': _convertIntToDateTime(
@@ -1110,24 +1112,48 @@ class TabloDatabase {
   static DateTime _convertIntToDateTime(int timeInSeconds) {
     return DateTime.fromMillisecondsSinceEpoch(timeInSeconds * 1000);
   }
-  
+
   String _getItemPath(String pathType, int itemID, String showType) {
     const subType = {
       'series': 'episodes',
       'sports': 'events',
       'movies': 'airings'
     };
-    final itemPath = StringBuffer(pathType == 'recordings' ? 'recordings/' : 'guide/');
+    final itemPath =
+        StringBuffer(pathType == 'recordings' ? 'recordings/' : 'guide/');
     itemPath.write('$showType/');
     if (pathType != 'show') itemPath.write('${subType[showType]}/');
     itemPath.write(itemID.toString());
     return itemPath.toString();
   }
 
-  List<Map<String, dynamic>> getBadRecordings() {
-    String sql;
-    final badRecordings = <Map<String, dynamic>>[];
-    sql = '''
+  // May want to merge with the getRecordingDetails below
+  List<Map<String, dynamic>> getRecordings(
+      {bool bad = false, bool failed = false}) {
+    _logMessage('Setting query filter.');
+    String filter;
+    if (bad && failed) {
+      filter = '''
+          (
+            rs.recordingState = 'finished' AND
+            r.recordingDuration < r.airingDuration * $_badRecordingThreshold
+          ) OR
+          rs.recordingState = 'failed' ''';
+    } else if (bad) {
+      filter = '''
+          rs.recordingState = 'finished' AND
+          r.recordingDuration < r.airingDuration * $_badRecordingThreshold ''';
+    } else if (failed) {
+      filter = '''
+          rs.recordingState = 'failed' ''';
+    } else {
+      filter = '''
+          rs.recordingState = 'finished' AND
+          r.recordingDuration >= r.airingDuration * $_badRecordingThreshold AND
+          rs.recordingState <> 'failed' ''';
+    }
+    final recordings = <Map<String, dynamic>>[];
+    final sql = '''
       SELECT
         r.recordingID,
         st.showType,
@@ -1150,14 +1176,16 @@ class TabloDatabase {
         LEFT JOIN episode AS e ON r.episodeID = e.episodeID
         LEFT JOIN season AS se ON e.seasonID = se.seasonID
       WHERE
-        rs.recordingState = 'finished' AND
-        r.recordingDuration < r.airingDuration * $_badRecordingThreshold;
+        $filter;
     ''';
+    _logMessage('Executing query.');
     final cacheResults = db.select(sql);
+    _logMessage('Formatting query result.');
     for (final cacheResult in cacheResults) {
-      badRecordings.add({
+      recordings.add({
         'recordingID': cacheResult['recordingID'],
-        'path': _getItemPath('recordings', cacheResult['recordingID'], cacheResult['showType']),
+        'path': _getItemPath(
+            'recordings', cacheResult['recordingID'], cacheResult['showType']),
         'showTitle': cacheResult['title'],
         'startDateTime': _convertIntToDateTime(cacheResult['airDate']),
         'season': cacheResult['season'],
@@ -1168,6 +1196,44 @@ class TabloDatabase {
         'percentage': cacheResult['percentage'],
       });
     }
-    return badRecordings;
+    return recordings;
+  }
+
+  Map<String, dynamic> getRecordingDetails(int recordingID) {
+    final recordingDetailsResult = db.select('''
+      SELECT
+        q.showID,
+        q.title as showTitle,
+        q.showType,
+        e.title as episodeTitle,
+        e.episode,
+        s.season,
+        r.recordingDuration
+      FROM (
+        SELECT
+          coalesce(c.showID, s.showID) AS showID,
+          s.title,
+          st.showType
+        FROM show s
+          LEFT JOIN show c ON s.showID = c.parentShowID
+          INNER JOIN showType st ON s.showTypeID = st.showTypeID
+        WHERE s.title <> ''
+        ) q
+        INNER JOIN recording r ON r.showID = q.showID
+        LEFT JOIN episode e ON r.episodeID = e.episodeID
+        LEFT JOIN season s ON e.seasonID = s.seasonID
+      WHERE r.recordingID = $recordingID;
+    ''').first;
+    return {
+      'path': _getItemPath(
+          'recordings', recordingID, recordingDetailsResult['showType']),
+      'showID': recordingDetailsResult['showID'],
+      'showTitle': recordingDetailsResult['showTitle'],
+      'showType': recordingDetailsResult['showType'],
+      'episodeTitle': recordingDetailsResult['episodeTitle'],
+      'episode': recordingDetailsResult['episode'],
+      'season': recordingDetailsResult['season'],
+      'recordingDuration': recordingDetailsResult['recordingDuration'],
+    };
   }
 }

@@ -15,26 +15,26 @@ void main() async {
   // runApp(const MyApp());
   Tablo.redirectLog(log);
   // TODO: Delete the next several lines once the database format is finalized and no longer needs to be recreated from scratch each time
-  // logMessage(
-  //     '$currentLibrary: Backing up or deleting database from previous execution.');
-  // final database = File('databases\\$testServerID.cache');
-  // if (database.existsSync()) {
-  //   logMessage('$testServerID.cache exists.');
-  //   final oldDatabase = File('databases\\$testServerID.cache.old');
-  //   if (!oldDatabase.existsSync()) {
-  //     logMessage('Renaming $testServerID.cache');
-  //     database.renameSync('databases\\$testServerID.cache.old');
-  //   } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
-  //     logMessage(
-  //         'Deleting $testServerID.cache.old and renaming $testServerID.cache');
-  //     oldDatabase.deleteSync();
-  //     database.renameSync('databases\\$testServerID.cache.old');
-  //   } else {
-  //     logMessage(
-  //         '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
-  //     database.deleteSync();
-  //   }
-  // }
+  logMessage(
+      '$currentLibrary: Backing up or deleting database from previous execution.');
+  final database = File('databases\\$testServerID.cache');
+  if (database.existsSync()) {
+    logMessage('$testServerID.cache exists.');
+    final oldDatabase = File('databases\\$testServerID.cache.old');
+    if (!oldDatabase.existsSync()) {
+      logMessage('Renaming $testServerID.cache');
+      database.renameSync('databases\\$testServerID.cache.old');
+    } else if (database.lengthSync() >= oldDatabase.lengthSync() ~/ (10 / 9)) {
+      logMessage(
+          'Deleting $testServerID.cache.old and renaming $testServerID.cache');
+      oldDatabase.deleteSync();
+      database.renameSync('databases\\$testServerID.cache.old');
+    } else {
+      logMessage(
+          '$testServerID.cache is < 90% the size of $testServerID.cache.old. Deleting $testServerID.cache');
+      database.deleteSync();
+    }
+  }
   final timer = Stopwatch();
   logMessage('Creating Tablo objects');
   timer.start();
@@ -44,28 +44,50 @@ void main() async {
   logMessage('Total elapsed time: ${timer.elapsed}');
   logMessage('Tablos located: ${tablos.length}');
   final tablo = tablos[0];
-  
-  // logMessage('Running delete failed recordings');
-  // tablo.deleteFailedRecordings(); // Change this into getting then deleting aka bad recordings below
-  
-  // final conflicts = tablo.getConflictedAirings();
-  // for (final conflict in conflicts) {
-  //   logMessage('Conflicts:');
-  //   for (final show in conflict) {
-  //     logMessage(show.toString());
-  //   }
-  // }
 
-  // final badRecordings = tablo.getBadRecordings();
-  // final pathList = <String>[];
-  // for (final badRecording in badRecordings) {
-  //   logMessage(badRecording.toString());
-  //   pathList.add(badRecording['path']);
-  // }
-  // tablo.deleteRecordingList(pathList);
+  logMessage('Running delete failed recordings');
+  final failedRecordings = tablo.getRecordings(failed: true);
+  final pathList = <String>[];
+  for (final failedRecording in failedRecordings) {
+    logMessage(failedRecording.toString());
+    pathList.add(failedRecording['path']);
+  }
+  await tablo.deleteRecordingList(pathList);
 
-  await tablo.exportRecording(4849037);
-  
+  logMessage('Running delete bad recordings');
+  final badRecordings = tablo.getRecordings(bad: true);
+  pathList.clear();
+  for (final badRecording in badRecordings) {
+    logMessage(badRecording.toString());
+    pathList.add(badRecording['path']);
+  }
+  await tablo.deleteRecordingList(pathList);
+
+  logMessage('Listing Conflicts');
+  final conflicts = tablo.getConflictedAirings();
+  for (final conflict in conflicts) {
+    logMessage('Conflicts:');
+    for (final show in conflict) {
+      logMessage(show.toString());
+    }
+  }
+
+  logMessage('Getting all recordings');
+  final recordings = tablo.getRecordings();
+  logMessage('Attempting to export all recordings with a valid season');
+  for (final recording in recordings) {
+    try {
+      final season = int.parse(recording['season']);
+      if (season > 0) {
+        logMessage(
+            'Exporting ${recording['recordingID']}: ${recording['showTitle']}: ${recording['season']}:${recording['episode']} ${recording['episodeTitle']}');
+        await tablo.exportRecording(recording['recordingID'], delete: true);
+      }
+    } catch (e) {
+      logMessage('Unable to process ${recording['recordingID']}: $e');
+    }
+  }
+
   logMessage('Execution complete.');
 }
 
